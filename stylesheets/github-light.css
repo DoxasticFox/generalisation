@@ -122,3 +122,7 @@ SOFTWARE.
   color: #1d3e81;
 }
 
+.figure {
+  margin: 0 auto;
+  display: table;
+}
