@@ -355,9 +355,6 @@ def sgn(x):
     else:
         return   0.0
 
-def abs(x):
-    return math.fabs(x)
-
 def numOnes(bits):
     n = 0
     for b in bits:
@@ -389,7 +386,6 @@ def search(net, Xs, Ts, limit=None):
 
     zipped       = zip(Xs, Ts)
     randomChoice = random.choice
-    #batchSize    = res * res / 128
     batchSize    = res * res
 
     global fileNum
@@ -397,10 +393,6 @@ def search(net, Xs, Ts, limit=None):
 
     while True:
         # Make a batch
-        #if fileNum <= res * 3:
-            #batch = [] # Warm it up!
-        #else:
-            #batch = [randomChoice(zipped) for i in range(batchSize)]
         batch = [randomChoice(zipped) for i in range(batchSize)]
 
         if fileNum % 10 == 0:
@@ -442,7 +434,6 @@ def search(net, Xs, Ts, limit=None):
 
         fileNum += 1
 
-
 ################################################################################
 
 # Make some data
@@ -450,11 +441,6 @@ trainingSize   = 100000
 sequenceLength = 8
 res            = 36
 
-#m  = loadMnist()
-#Xs = m[0]
-#Ys = [float(m[1][i] == 0) for i in range(len(m[1]))]
-
-#Xs = [[int(np.random.uniform() + 0.5) for i in range(sequenceLength)] for j in range(trainingSize)]
 Xs = [[np.random.uniform() for i in range(sequenceLength)] for j in range(trainingSize)]
 Ys = [oddParity(x) for x in Xs]
 
