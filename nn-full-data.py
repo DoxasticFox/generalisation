@@ -19,7 +19,7 @@ def plot(net):
     global saveDir
     global fileNum
 
-    nG = len(net[0][0]) * 2 # Plot width
+    nG = len(net[0][0])     # Plot width
     nI = len(net[0]   )     # Input size / 2
     nL = len(net      )     # num layers
 
@@ -32,11 +32,11 @@ def plot(net):
                 for l in range(nG):
                     K = k / float(nG - 1)
                     L = l / float(nG - 1)
-                    im[k + i*nG + i][l + j*nG + j] = evalUnit(K, L, unit)
+                    im[k + i*nG + i][l + j*nG + j] = evalUnit(unit, K, L)
 
     # Save to files
     im = scipy.misc.toimage(im, cmin=0.0, cmax=1.0)
-    im.save('%simg-%06d.png' % (saveDir, fileNum))
+    im.save('%simg-%09d.png' % (saveDir, fileNum))
 
 def save(net):
     global saveDir
@@ -64,61 +64,84 @@ def load(index):
 
         return net
 
-def bin(res, x):
-    bx = res * x
-    bx = max(0,   bx)
-    bx = min(res-1, bx)
-    bx = int(bx)
-    return bx
+# bin
+def binPair(res, x):
+    bl = int(x * (res - 1))
+    bl = clip(bl, 0, res - 2)
+    bu = bl + 1
+    return bl, bu
 
-def bins(x, y, res):
-    return bin(res, x), bin(res, y)
+# bins
+def binPairs(res, x, y):
+    return binPair(res, x), binPair(res, y)
 
-def evalUnit(x, y, unit):
-    res    = len(unit)
-    bx, by = bins(x, y, res)
-    return unit[bx][by]
+def binDistPair(res, x):
+    ''' Assumes 0.0 <= x <= 1.0 '''
+    bl, bu = binPair(res, x)
 
-def multiFun(Xs, net):
-    activated     = []
-    addActivation = activated.append
+    sl = bl / float(res - 1) # Snapped upper
+    su = bu / float(res - 1) # Snapped lower
 
+    return bl, bu, x - sl, su - x
+
+def binDistPairs(res, x, y):
+    return binDistPair(res, x), binDistPair(res, y)
+
+def evalUnit(unit, x, y):
+    res = len(unit)
+    (xbl, xbu, xdl, xdu), (ybl, ybu, ydl, ydu) = binDistPairs(res, x, y)
+
+    return (res - 1) * (res - 1) * (
+            unit[xbl][ybl] * xdu * ydu + \
+            unit[xbu][ybl] * xdl * ydu + \
+            unit[xbl][ybu] * xdu * ydl + \
+            unit[xbu][ybu] * xdl * ydl   \
+    )
+
+def multiFun(net, Xs):
     tmp       = Xs[:]
     for     i in range(len(net   )):
         for j in range(len(net[i])):
             res = len(net[i][j])
-            a = (i, j) + bins(tmp[j*2+0], tmp[j*2+1], res)
-            addActivation(a)
+            tmp[j] = evalUnit(
+                    net[i][j    ],
+                    tmp   [j*2+0],
+                    tmp   [j*2+1]
+            )
+    return tmp[0]
 
-            tmp[j] = evalUnit(tmp   [j*2+0],
-                              tmp   [j*2+1],
-                              net[i][j    ])
-
-    return tmp[0], activated
-
-def dxUnit(x, y, unit):
+def dxUnit(unit, x, y):
     res    = len(unit)
-    bx, by = bins(x, y, res)
+    (xbl, xbu, xdl, xdu), (ybl, ybu, ydl, ydu) = binDistPairs(res, x, y)
 
-    if   bin(res, x) == 0:               return 2.0 * res * (unit[bx+1][by] - unit[bx  ][by])
-    elif bin(res, x) == res - 1:         return 2.0 * res * (unit[bx  ][by] - unit[bx-1][by])
-    elif x % (1.0/res) <= 1.0/(2 * res): return 2.0 * res * (unit[bx  ][by] - unit[bx-1][by])
-    else:                                return 2.0 * res * (unit[bx+1][by] - unit[bx  ][by])
+    return (res - 1) * (res - 1) * (
+            ydu * (unit[xbu][ybl] - unit[xbl][ybl]) + \
+            ydl * (unit[xbu][ybu] - unit[xbl][ybu])   \
+    )
 
-def dyUnit(x, y, unit):
+def dyUnit(unit, x, y):
     res    = len(unit)
-    bx, by = bins(x, y, res)
+    (xbl, xbu, xdl, xdu), (ybl, ybu, ydl, ydu) = binDistPairs(res, x, y)
 
-    if   bin(res, y) == 0:               return 2.0 * res * (unit[bx][by+1] - unit[bx][by  ])
-    elif bin(res, y) == res - 1:         return 2.0 * res * (unit[bx][by  ] - unit[bx][by-1])
-    elif y % (1.0/res) <= 1.0/(2 * res): return 2.0 * res * (unit[bx][by  ] - unit[bx][by-1])
-    else:                                return 2.0 * res * (unit[bx][by+1] - unit[bx][by  ])
+    return (res - 1) * (res - 1) * (
+            xdu * (unit[xbl][ybu] - unit[xbl][ybl]) + \
+            xdl * (unit[xbu][ybu] - unit[xbu][ybl])   \
+    )
 
-def dwUnit(x, y, unit):
-    return 1.0
+def dwUnit(unit, x, y):
+    (xbl, xbu, xdl, xdu), (ybl, ybu, ydl, ydu) = binDistPairs(res, x, y)
+
+    norm = (res - 1) * (res - 1)
+
+    wll = norm * xdu * ydu
+    wlu = norm * xdu * ydl
+    wul = norm * xdl * ydu
+    wuu = norm * xdl * ydl
+
+    return wll, wlu, wul, wuu
 
 def dxErr(x, t):
-    return (x - t) / 2.0
+    return x - t
 
 def backprop(net, Xs, t):
     Zs  = forward (net, Xs);              # print 'Zs ', Zs
@@ -146,7 +169,7 @@ def forward(net, Xs):
             y    = Zs [i][j+1]
             unit = net[i][j/2]
 
-            Zs[i+1][j/2] = evalUnit(x, y, unit)
+            Zs[i+1][j/2] = evalUnit(unit, x, y)
 
     return Zs
 
@@ -157,7 +180,6 @@ def dyUnits(net, Zs):
     return dUnits(net, Zs, dyUnit)
 
 def dwUnits(net, Zs):
-    return None
     width = len(Zs[0]) / 2
     depth = len(Zs   ) - 1
 
@@ -169,7 +191,7 @@ def dwUnits(net, Zs):
             y    = Zs [i][j+1]
             unit = net[i][j/2]
 
-            Ds[i][j/2] = dwUnit(x, y, unit)
+            Ds[i][j/2] = dwUnit(unit, x, y)
 
     return Ds
 
@@ -185,7 +207,7 @@ def dUnits(net, Zs, dUnit):
             y    = Zs [i+1][j+1]
             unit = net[i+1][j/2]
 
-            Ds[i][j/2] = dUnit(x, y, unit)
+            Ds[i][j/2] = dUnit(unit, x, y)
 
     return Ds
 
@@ -202,26 +224,67 @@ def backward(Zs, DXs, DYs, DWs, t):
     # Backward pass: Multiply the DXs and DYs appropriately
     for     i in range(len(Ds) - 2, -1,         -1):
         for j in range(0,           len(Ds[i]),  2):
-            Ds[i][j  ] = Ds[i+1][j/2] * DXs[i][j/2]
-            Ds[i][j+1] = Ds[i+1][j/2] * DYs[i][j/2]
+            Ds[i][j  ] = (Ds[i+1][j/2]) * DXs[i][j/2]
+            Ds[i][j+1] = (Ds[i+1][j/2]) * DYs[i][j/2]
 
     # Multiply by DWs element-wise
-    #for     i in range(len(Ds   )):
-        #for j in range(len(Ds[i])):
-            #Ds[i][j] *= DWs[i][j]
+    for     i in range(len(Ds   )):
+        for j in range(len(Ds[i])):
+            Ds[i][j] = [dw * Ds[i][j] for dw in DWs[i][j]]
 
     return Ds
 
+def sgn(x):
+    if x > 0.0: return + 1.0
+    if x < 0.0: return - 1.0
+    else:       return   0.0
+
 def activationLocations(net, Zs):
     res = len(net[0][0])
-    As  = [[(i, j/2) + bins(Zs[i][j], Zs[i][j+1], res) for j in range(0, len(Zs[i]),  2)] \
-                                                       for i in range(0, len(Zs   )-1  )]
+
+    As  = [[(i, j/2) + binPairs(res, Zs[i][j], Zs[i][j+1]) for j in range(0, len(Zs[i]),  2)] \
+                                                           for i in range(0, len(Zs   )-1  )]
     return As
 
 def zipDs(Ds, As):
     # Assume Ds and As have the same dimensions
     return [(Ds[i][j], As[i][j]) for i in range(len(Ds   )) \
                                  for j in range(len(Ds[i]))]
+
+def regGrad(net, i, j, k, l):
+    res = len(net[0][0])
+    x   = net[i][j][k][l]
+    grad = 0.0
+    for     k_  in (-1, 0, +1):
+        for l_  in (-1, 0, +1):
+            K = k_ + k
+            L = l_ + l
+            if K < 0: continue
+            if L < 0: continue
+            if K >= res: continue
+            if L >= res: continue
+
+            grad += x - net[i][j][K][L]
+
+    return grad
+
+def reguarliserGrad(net):
+    return [[[[regGrad(net, i, j, k, l) for l in range(len(net[i][j][k]))]
+                                        for k in range(len(net[i][j]   ))]
+                                        for j in range(len(net[i]      ))]
+                                        for i in range(len(net         ))]
+
+def regulariseNet(net, rate, alpha):
+    grad = reguarliserGrad(net)
+    return [[[[net[i][j][k][l] - grad[i][j][k][l] * alpha * rate for l in range(len(net[i][j][k]))]
+                                                                 for k in range(len(net[i][j]   ))]
+                                                                 for j in range(len(net[i]      ))]
+                                                                 for i in range(len(net         ))]
+
+def cdfTriangular(x):
+    if   0.0 <= x <  0.5: return 2.0 * x * x
+    elif 0.5 <= x <= 1.0: return 2.0 * x * x - (2.0 * x - 1.0)**2.0
+    else:                 return None
 
 def makeUnit(res, c=None):
     lo = +0.0
@@ -230,7 +293,7 @@ def makeUnit(res, c=None):
     for i in range(len(unit)):
         for j in range(len(unit)):
             if   c == None:
-                unit[i][j] = (i+j)/(2.0*(res-1))
+                unit[i][j] = cdfTriangular((i+j)/(2.0*(res-1)))
             elif c == 'n':
                 unit[i][j] = np.random.uniform()
             else:
@@ -246,6 +309,7 @@ def makeNet(dim, res):
         dim /= 2
         if dim >= 2:
             layer = [makeUnit(res     ) for i in range(dim)]
+            #layer = [makeUnit(res, 'n') for i in range(dim)]
         else:
             layer = [makeUnit(res, 0.5) for i in range(dim)]
         net.append(layer)
@@ -255,68 +319,6 @@ def makeNet(dim, res):
         layerNum += 1
 
     return net
-
-def blurHorz(net, i, j, k, l):
-    unit  = net[i][j]
-    #kMax = len(unit   ) - 1
-    lMax  = len(unit[0]) - 1
-
-    #if i != 0: return unit[k][l]
-
-    if 0 <  l  < lMax:
-        return (unit[k  ][l-1] + unit[k  ][l  ] + unit[k  ][l+1])/3.0
-    if 0 == l:
-        return (                 unit[k  ][l  ] + unit[k  ][l+1])/2.0
-    if      l == lMax:
-        return (unit[k  ][l-1] + unit[k  ][l  ]                 )/2.0
-
-def blurVert(net, i, j, k, l):
-    unit  = net[i][j]
-    kMax  = len(unit   ) - 1
-    #lMax = len(unit[0]) - 1
-
-    #if i != 0: return unit[k][l]
-
-    if 0 <  k  < kMax:
-        return (unit[k-1][l  ] + unit[k  ][l  ] + unit[k+1][l  ])/3.0
-    if 0 == k:
-        return (                 unit[k  ][l  ] + unit[k+1][l  ])/2.0
-    if      k == kMax:
-        return (unit[k-1][l  ] + unit[k  ][l  ]                 )/2.0
-
-def applyBlur(net):
-    horz = [[[[blurHorz(net,  i, j, k, l) for l in range(len(net [i][j][k]))]
-                                          for k in range(len(net [i][j]   ))]
-                                          for j in range(len(net [i]      ))]
-                                          for i in range(len(net          ))]
-
-    vert = [[[[blurVert(horz, i, j, k, l) for l in range(len(horz[i][j][k]))]
-                                          for k in range(len(horz[i][j]   ))]
-                                          for j in range(len(horz[i]      ))]
-                                          for i in range(len(horz         ))]
-    return vert
-
-def selectiveBlur(net, exclude, repeat=3):
-    if repeat == 0:
-        return net
-
-    blurred = applyBlur(net)
-
-    # BLUR STRENGTH. A == 1.0 -> FULL STRENGTH A == 0.0 -> NO BLUR
-    #a = 1.0 / 4096.0
-    #for i, layer in enumerate(net):
-        #for j, unit in enumerate(layer):
-            #for k, pr in enumerate(unit):
-                #for l, pc in enumerate(pr):
-                    #blurred[i][j][k][l] = \
-                    #blurred[i][j][k][l] * (a)  + \
-                        #net[i][j][k][l] * (1.0 - a)
-
-    for i, j, k, l in exclude:
-        blurred[i][j][k][l] = \
-            net[i][j][k][l]
-
-    return selectiveBlur(blurred, exclude, repeat-1)
 
 def normaliseNet(net):
     for     i in range(len(net   ) - 1):
@@ -340,20 +342,9 @@ def obj(net, Xs, Ts):
     out = 0.0
     for i, x in enumerate(Xs):
         x = Xs[i]
-        ybar = multiFun(x, net)[0]
+        ybar = multiFun(net, x)
         out += (ybar - Ts[i])**2
-    return out
-
-def normaliseGradient(gradientVector):
-    return [sgn(g) for g in gradientVector]
-
-def sgn(x):
-    if x > 0.0:
-        return + 1.0
-    if x < 0.0:
-        return - 1.0
-    else:
-        return   0.0
+    return out / len(Xs)
 
 def numOnes(bits):
     n = 0
@@ -363,8 +354,45 @@ def numOnes(bits):
     return n
 
 def oddParity(bits):
+    half = len(bits)/4
+    bits = bits[:half]
+
+    #return int(bits[0] > bits[-1])
+
+    #S = sorted(bits)
+    #m = max   (bits)
+    #for i, b in enumerate(bits):
+        #if b == m:
+            #return i / float(len(bits)-1)
+
+    #return sorted(bits)[-2]
+    #return np.sin((bits[0] + bits[1]) * 3.14)**2.0
     if numOnes(bits) % 2 == 0: return 0.0
     else:                      return 1.0
+
+def classificationError(net, numExamples=1000):
+    ''' Classification error on a randomly generated sample as a percentage. '''
+    dims = len(net[0]) * 2 / 4
+
+    Xs = [[np.random.uniform() for i in range(dims)] for j in range(numExamples)]
+    Xs = [x*4 for x in Xs]
+
+    Ts = [oddParity(x) for x in Xs]; numClasses = len(set(Ts))
+    Ts = [int(oddParity(x)*(numClasses - 1) + 0.5) for x in Xs]         # Ground truth
+
+    Ys = [multiFun(net, x)              for x in Xs]  # Prediction
+    Ys = [int(y*(numClasses - 1) + 0.5) for y in Ys]
+    #print
+    #print Ts
+    #print Ys
+
+    Es = [float(t != y) for t, y in zip(Ts, Ys)] # Errors
+
+    #for X, e in zip(Xs, Es):
+        #if e:
+            #print X[:len(X)/4]
+
+    return sum(Es) / len(Ts) * 100.0
 
 # Search #######################################################################
 
@@ -382,51 +410,51 @@ def clip(x, min=0.0, max=1.0):
 
 def search(net, Xs, Ts, limit=None):
     res            = len(net[0][0])
-    rate           = 1.0 / res
+    rate           = 0.1
 
     zipped       = zip(Xs, Ts)
     randomChoice = random.choice
-    batchSize    = res * res
+    batchSize    = 100
 
     global fileNum
     print 'batch size:', batchSize
 
     while True:
-        # Make a batch
-        batch = [randomChoice(zipped) for i in range(batchSize)]
-
-        if fileNum % 10 == 0:
+        if fileNum % 1000 == 0:
             checkpoint(net)
             print 'plot', fileNum
-        if fileNum % 80 == 0:
+        if fileNum % 200 == 0:
             sample = random.sample(zipped, 500)
             Xs_, Ts_ = zip(*sample)
             print 'mse:', obj(net, Xs_, Ts_)
+            print 'error (%):', classificationError(net)
+
+        # Make a batch
+        batch = [randomChoice(zipped) for i in range(batchSize)]
+        GAs   = [backprop(net, X, T) for X, T in batch]
 
         # Take a step for each sample in batch
-        for X, T in batch:
-            GAs = backprop(net, X, T)
+        for GA in GAs:
+            for grad, act in GA:
+                gradWll, gradWlu, gradWul, gradWuu = grad
+                i, j, (xbl, xbu), (ybl, ybu)       = act
 
-            grads, acts = zip(*GAs)
-            grads = normaliseGradient(grads)
-            GAs   = zip(grads, acts)
+                stepWll = - rate * gradWll / float(batchSize)
+                stepWlu = - rate * gradWlu / float(batchSize)
+                stepWul = - rate * gradWul / float(batchSize)
+                stepWuu = - rate * gradWuu / float(batchSize)
 
-            for ga in GAs:
-                grad, act    = ga
-                i, j, pi, pj = act
+                net[i][j][xbl][ybl] += stepWll
+                net[i][j][xbl][ybu] += stepWlu
+                net[i][j][xbu][ybl] += stepWul
+                net[i][j][xbu][ybu] += stepWuu
 
-                step = - rate * grad
+                net[i][j][xbl][ybl]  = clip(net[i][j][xbl][ybl])
+                net[i][j][xbl][ybu]  = clip(net[i][j][xbl][ybu])
+                net[i][j][xbu][ybl]  = clip(net[i][j][xbu][ybl])
+                net[i][j][xbu][ybu]  = clip(net[i][j][xbu][ybu])
 
-                net[i][j][pi][pj] += step
-                net[i][j][pi][pj]  = clip(net[i][j][pi][pj])
-
-        activations = []
-        for X, T in batch:
-            _, acts = multiFun(X, net)
-            activations += acts
-
-        # Selectively blur based on activations after batch update
-        net = selectiveBlur(net, exclude=activations)
+        net = regulariseNet(net, rate, alpha=0.0005)
         normaliseNet(net)
 
         if limit is not None and fileNum >= limit:
@@ -439,14 +467,24 @@ def search(net, Xs, Ts, limit=None):
 # Make some data
 trainingSize   = 100000
 sequenceLength = 8
-res            = 36
+res            = 6
 
+#Xs = [[int(np.random.uniform() + 0.5) for i in range(sequenceLength)] for j in range(trainingSize)]
 Xs = [[np.random.uniform() for i in range(sequenceLength)] for j in range(trainingSize)]
+Xs = [x*4 for x in Xs]
 Ys = [oddParity(x) for x in Xs]
 
 # Fit
-bl = makeNet(sequenceLength, res)
+bl = makeNet(sequenceLength*4, res)
+bl = load(283000)
 
+thing = 1000000
+search(bl, Xs, Ys, limit=thing*1)
+bl = load(thing*1); bl[0][0] = makeUnit(res, 0.5); search(bl, Xs, Ys, limit= thing*2)
+bl = load(thing*2); bl[0][1] = makeUnit(res, 0.5); search(bl, Xs, Ys, limit=thing*3)
+bl = load(thing*3); bl[1][0] = makeUnit(res, 0.5); search(bl, Xs, Ys, limit=thing*4)
+
+search(bl, Xs, Ys, limit= 1e8)
 search(bl, Xs, Ys, limit= 500)
 
 bl = load( 500); bl[0][0] = makeUnit(res, 0.5); search(bl, Xs, Ys, limit=1000)
