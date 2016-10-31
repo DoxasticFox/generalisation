@@ -220,17 +220,18 @@ def backward(Zs, DXs, DYs, DWs, t):
 
     Ds  = [[0.0 for j in range(width / 2**i)] for i in range(depth)]
 
-    Ds[-1][-1] = dErr
+    #Ds[-1][-1] = dErr
+    Ds[-1][-1] = 1.0
     # Backward pass: Multiply the DXs and DYs appropriately
     for     i in range(len(Ds) - 2, -1,         -1):
         for j in range(0,           len(Ds[i]),  2):
-            Ds[i][j  ] = (Ds[i+1][j/2]) * DXs[i][j/2]
-            Ds[i][j+1] = (Ds[i+1][j/2]) * DYs[i][j/2]
+            Ds[i][j  ] = sgn(Ds[i+1][j/2]) * DXs[i][j/2]
+            Ds[i][j+1] = sgn(Ds[i+1][j/2]) * DYs[i][j/2]
 
-    # Multiply by DWs element-wise
+    # Multiply by DWs and dErr element-wise
     for     i in range(len(Ds   )):
         for j in range(len(Ds[i])):
-            Ds[i][j] = [dw * Ds[i][j] for dw in DWs[i][j]]
+            Ds[i][j] = [dErr * dw * Ds[i][j] for dw in DWs[i][j]]
 
     return Ds
 
@@ -308,8 +309,8 @@ def makeNet(dim, res):
     while dim >= 2:
         dim /= 2
         if dim >= 2:
-            layer = [makeUnit(res     ) for i in range(dim)]
-            #layer = [makeUnit(res, 'n') for i in range(dim)]
+            #layer = [makeUnit(res     ) for i in range(dim)]
+            layer = [makeUnit(res, 'n') for i in range(dim)]
         else:
             layer = [makeUnit(res, 0.5) for i in range(dim)]
         net.append(layer)
@@ -354,8 +355,13 @@ def numOnes(bits):
     return n
 
 def oddParity(bits):
-    half = len(bits)/4
+    half = len(bits)/2
     bits = bits[:half]
+
+    bits = ['1' if x > 0.5 else '0' for x in bits]
+    bits = ''.join(bits)
+    num  = int(bits, 2)
+    return float(num % 15 == 0)
 
     #return int(bits[0] > bits[-1])
 
@@ -366,16 +372,18 @@ def oddParity(bits):
             #return i / float(len(bits)-1)
 
     #return sorted(bits)[-2]
+
     #return np.sin((bits[0] + bits[1]) * 3.14)**2.0
+
     if numOnes(bits) % 2 == 0: return 0.0
     else:                      return 1.0
 
 def classificationError(net, numExamples=1000):
     ''' Classification error on a randomly generated sample as a percentage. '''
-    dims = len(net[0]) * 2 / 4
+    dims = len(net[0]) * 2 / 2
 
     Xs = [[np.random.uniform() for i in range(dims)] for j in range(numExamples)]
-    Xs = [x*4 for x in Xs]
+    Xs = [x*2 for x in Xs]
 
     Ts = [oddParity(x) for x in Xs]; numClasses = len(set(Ts))
     Ts = [int(oddParity(x)*(numClasses - 1) + 0.5) for x in Xs]         # Ground truth
@@ -414,16 +422,16 @@ def search(net, Xs, Ts, limit=None):
 
     zipped       = zip(Xs, Ts)
     randomChoice = random.choice
-    batchSize    = 100
+    batchSize    = 200
 
     global fileNum
     print 'batch size:', batchSize
 
     while True:
-        if fileNum % 1000 == 0:
+        if fileNum % 200 == 0:
             checkpoint(net)
             print 'plot', fileNum
-        if fileNum % 200 == 0:
+        if fileNum % 50 == 0:
             sample = random.sample(zipped, 500)
             Xs_, Ts_ = zip(*sample)
             print 'mse:', obj(net, Xs_, Ts_)
@@ -454,7 +462,7 @@ def search(net, Xs, Ts, limit=None):
                 net[i][j][xbu][ybl]  = clip(net[i][j][xbu][ybl])
                 net[i][j][xbu][ybu]  = clip(net[i][j][xbu][ybu])
 
-        net = regulariseNet(net, rate, alpha=0.0005)
+        net = regulariseNet(net, rate, alpha=0.001)
         normaliseNet(net)
 
         if limit is not None and fileNum >= limit:
@@ -466,17 +474,16 @@ def search(net, Xs, Ts, limit=None):
 
 # Make some data
 trainingSize   = 100000
-sequenceLength = 8
-res            = 6
+sequenceLength = 4
+res            = 20
 
-#Xs = [[int(np.random.uniform() + 0.5) for i in range(sequenceLength)] for j in range(trainingSize)]
 Xs = [[np.random.uniform() for i in range(sequenceLength)] for j in range(trainingSize)]
-Xs = [x*4 for x in Xs]
+Xs = [x*2 for x in Xs]
 Ys = [oddParity(x) for x in Xs]
 
 # Fit
-bl = makeNet(sequenceLength*4, res)
-bl = load(283000)
+bl = makeNet(sequenceLength*2, res)
+bl = load(49600)
 
 thing = 1000000
 search(bl, Xs, Ys, limit=thing*1)
