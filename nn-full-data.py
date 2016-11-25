@@ -355,15 +355,15 @@ def numOnes(bits):
     return n
 
 def oddParity(bits):
-    half = len(bits)/2
-    bits = bits[:half]
+    #half = len(bits)/2
+    #bits = bits[:half]
 
-    bits = ['1' if x > 0.5 else '0' for x in bits]
-    bits = ''.join(bits)
-    num  = int(bits, 2)
-    return float(num % 15 == 0)
+    #bits = ['1' if x > 0.5 else '0' for x in bits]
+    #bits = ''.join(bits)
+    #num  = int(bits, 2)
+    #return float(num % 15 == 0)
 
-    #return int(bits[0] > bits[-1])
+    return int(bits[0] > bits[-1])
 
     #S = sorted(bits)
     #m = max   (bits)
@@ -380,10 +380,10 @@ def oddParity(bits):
 
 def classificationError(net, numExamples=1000):
     ''' Classification error on a randomly generated sample as a percentage. '''
-    dims = len(net[0]) * 2 / 2
+    dims = len(net[0]) * 2 / 1
 
     Xs = [[np.random.uniform() for i in range(dims)] for j in range(numExamples)]
-    Xs = [x*2 for x in Xs]
+    #Xs = [x*2 for x in Xs]
 
     Ts = [oddParity(x) for x in Xs]; numClasses = len(set(Ts))
     Ts = [int(oddParity(x)*(numClasses - 1) + 0.5) for x in Xs]         # Ground truth
@@ -418,11 +418,11 @@ def clip(x, min=0.0, max=1.0):
 
 def search(net, Xs, Ts, limit=None):
     res            = len(net[0][0])
-    rate           = 0.1
+    rate           = 10.0
 
     zipped       = zip(Xs, Ts)
     randomChoice = random.choice
-    batchSize    = 200
+    batchSize    = 100
 
     global fileNum
     print 'batch size:', batchSize
@@ -462,7 +462,7 @@ def search(net, Xs, Ts, limit=None):
                 net[i][j][xbu][ybl]  = clip(net[i][j][xbu][ybl])
                 net[i][j][xbu][ybu]  = clip(net[i][j][xbu][ybu])
 
-        net = regulariseNet(net, rate, alpha=0.001)
+        net = regulariseNet(net, rate, alpha=0.01)
         normaliseNet(net)
 
         if limit is not None and fileNum >= limit:
@@ -474,16 +474,16 @@ def search(net, Xs, Ts, limit=None):
 
 # Make some data
 trainingSize   = 100000
-sequenceLength = 4
-res            = 20
+sequenceLength = 512
+res            = 10
 
 Xs = [[np.random.uniform() for i in range(sequenceLength)] for j in range(trainingSize)]
-Xs = [x*2 for x in Xs]
+#Xs = [x*2 for x in Xs]
 Ys = [oddParity(x) for x in Xs]
 
 # Fit
-bl = makeNet(sequenceLength*2, res)
-bl = load(49600)
+bl = makeNet(sequenceLength*1, res)
+#bl = load(8800)
 
 thing = 1000000
 search(bl, Xs, Ys, limit=thing*1)

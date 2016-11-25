@@ -1,0 +1,9 @@
+Measure classification error now that benchmarking is done after weight updates and before regularisation
+
+Improve vanishing gradient cirumvention by averaging real gradients *then* normalising their magnitudes
+
+Investigate effect of momentum
+
+Combine regularisation and weight update steps
+
+Don't clip weights. Normalising the contrast has the same effect
