@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <climits>
 #include <random>
 #include <vector>
@@ -22,7 +24,7 @@ struct Net {
   float *input;
   float *output;
 
-  float *actLocs;
+  int   *actLocs;
   float *actDists;
   float *acts;
 };
@@ -32,14 +34,15 @@ std::default_random_engine generator;
 /***************************** COUNTING FUNCTIONS *****************************/
 
 int lenLayer(Net& net, int l) {
-  return pow2(net.depth - l - 1);
+  return pow(2, net.depth - l - 1);
 }
 
 // Number of units above the layer indexed by `l`
 int numUnitsAbove(Net& net, int l) {
-  return net.dim - pow2(net.depth - l);
+  return net.dim - pow(2, net.depth - l);
 }
 
+// Number of units before the unit at layer `l`, index `i`
 int numUnitsAbove(Net& net, int l, int i) {
   return numUnitsAbove(net, l) + i;
 }
@@ -102,23 +105,24 @@ float* getUnit(Net& net, int l, int i) {
   return &net.params[I_params(net, l, i)];
 }
 
-float getPixel(Net& net, int l, int i, int x, int y) {
+float getParam(Net& net, int l, int i, int x, int y) {
   return net.params[I_params(net, l, i, x, y)];
 }
 
 float* getActs(Net& net, int l, int i) {
-  return &net.acts[I_acts(net, l, i)];
+  if (l < 0) return &net.input[I_acts(net, 0, i)];
+  else       return &net.acts [I_acts(net, l, i)];
 }
 
 float* getActs(Net& net, int l) {
   return getActs(net, l, 0);
 }
 
-float* getActLocs(Net& net, int l, int i) {
+int* getActLocs(Net& net, int l, int i) {
   return &net.actLocs[I_actLocs(net, l, i)];
 }
 
-float* getActLocs(Net& net, int l) {
+int* getActLocs(Net& net, int l) {
   return getActLocs(net, l, 0);
 }
 
@@ -130,6 +134,52 @@ float* getActDists(Net& net, int l) {
   return getActDists(net, l, 0);
 }
 
+/********************************** PRINTING **********************************/
+
+void printParams(std::ofstream& file, Net& net, int l, int i, int x) {
+  file << "      [";
+  for (int y = 0; y < net.res; y++) {
+    int precision = std::numeric_limits<float>::max_digits10;
+    float param = getParam(net, l, i, x, y);
+
+    file << std::setprecision(precision) << param << ", ";
+  }
+  file << "]";
+}
+
+void printParams(std::ofstream& file, Net& net, int l, int i) {
+  file << "    [" << std::endl;
+  for (int x = 0; x < net.res; x++) {
+    printParams(file, net, l, i, x);
+    file << "," << std::endl;
+  }
+  file << "    ]";
+}
+
+void printParams(std::ofstream& file, Net& net, int l) {
+  file << "  [" << std::endl;
+  for (int i = 0; i < lenLayer(net, l); i++) {
+    printParams(file, net, l, i);
+    file << "," << std::endl;
+  }
+  file << "  ]";
+}
+
+void printParams(std::string filename, Net& net) {
+  std::ofstream file;
+  file.open(filename);
+
+  file << "net = ";
+  file << "[" << std::endl;
+  for (int i = 0; i < net.depth; i++) {
+    printParams(file, net, i);
+    file << "," << std::endl;
+  }
+  file << "]";
+
+  file.close();
+}
+
 /*************************** NETWORK INITIALISATION ***************************/
 
 void allocNet(Net& net) {
@@ -139,21 +189,26 @@ void allocNet(Net& net) {
   net.params       = new float[net.numUnits*net.res*net.res];
 
   net.acts         = new float[net.numUnits];
-  net.actLocs      = new float[net.numUnits*4];
+  net.actLocs      = new   int[net.numUnits*4];
   net.actDists     = new float[net.numUnits*4];
 }
 
+float abs1(float x, float y) { return fabs(x + y - 1.0); }
+float abs2(float x, float y) { return fabs(x - y      ); }
+
 void initUnit(Net& net, int l, int i) {
   // Flip a coin to pick between abs1 and abs2
-  bool abs1 = rand() % 2 == 0;
-  bool abs2 = !abs1;
+  bool a1 = rand() % 2 == 0;
+  bool a2 = !a1;
 
   float *unit = getUnit(net, l, i);
   for (int x = 0; x < net.res; x++) {
     for (int y = 0; y < net.res; y++) {
-      int I = I_unit(net, x, y);
-      if (abs1) unit[I] = fabs((x + y)/(net.res - 1.0) - 1.0);
-      if (abs2) unit[I] = fabs((x - y)/(net.res - 1.0)      );
+      float fx = x/(net.res - 1.0);
+      float fy = y/(net.res - 1.0);
+
+      if (a1) unit[I_unit(net, x, y)] = abs1(fx, fy);
+      if (a2) unit[I_unit(net, x, y)] = abs2(fx, fy);
     }
   }
 }
@@ -185,7 +240,7 @@ Net makeNet(int dim, int res, float reg) {
 
 void binPair(
     Net& net, float x,
-    float& xbl, float& xbu
+    int& xbl, int& xbu
 ) {
   int resSub    = net.res - 1;
   int resSubSub = net.res - 2;
@@ -198,7 +253,7 @@ void binPair(
 
 void binPairs(
     Net& net, float x, float y,
-    float& xbl, float& xbu, float& ybl, float& ybu
+    int& xbl, int& xbu, int& ybl, int& ybu
 ) {
   binPair(net, x, xbl, xbu);
   binPair(net, y, ybl, ybu);
@@ -227,42 +282,43 @@ void distPairs(
 
 void computeActLocs(Net& net, int l) {
   // Figure out where the previous layer of `acts` and `actLocs` is in memory
-  float *actLocs  = getActLocs(net, l);
-  float *acts;
-  if (l == 0) acts = net.input;
-  else        acts = getActs(net, l-1);
+  int   *actLocs = getActLocs(net, l);
+  float *acts    = getActs   (net, l-1);
 
   // Compute act locs
-  for (int i = 0; i < lenLayer(net, l); i++) {
-    float x = acts[i*2+0];
-    float y = acts[i*2+1];
+  int L = lenLayer(net, l);
+  for (int i = 0; i < L; i++) {
+    float x = acts[0];
+    float y = acts[1];
 
-    float xbl, xbu, ybl, ybu;
+    int xbl, xbu, ybl, ybu;
     binPairs(net, x, y, xbl, xbu, ybl, ybu);
 
-    actLocs[i*4+0] = xbl;
-    actLocs[i*4+1] = xbu;
-    actLocs[i*4+2] = ybl;
-    actLocs[i*4+3] = ybu;
+    actLocs[0] = xbl;
+    actLocs[1] = xbu;
+    actLocs[2] = ybl;
+    actLocs[3] = ybu;
+
+    acts    += 2;
+    actLocs += 4;
   }
 }
 
 void computeActDists(Net& net, int l) {
-  float *actLocs  = getActLocs (net, l);
+  int   *actLocs  = getActLocs (net, l);
   float *actDists = getActDists(net, l);
-  float *acts;
-  if (l == 0) acts = net.input;
-  else        acts = getActs(net, l-1);
+  float *acts     = getActs    (net, l-1);
 
   // Compute `actDists`
-  for (int i = 0; i < lenLayer(net, l); i++) {
-    float x = acts[i*2+0];
-    float y = acts[i*2+1];
+  int L = lenLayer(net, l);
+  for (int i = 0; i < L; i++) {
+    float x = acts[0];
+    float y = acts[1];
 
-    float xbl = actLocs[i*4+0];
-    float xbu = actLocs[i*4+1];
-    float ybl = actLocs[i*4+2];
-    float ybu = actLocs[i*4+3];
+    int xbl = actLocs[0];
+    int xbu = actLocs[1];
+    int ybl = actLocs[2];
+    int ybu = actLocs[3];
 
     float xdl, xdu, ydl, ydu;
     distPairs(
@@ -271,38 +327,46 @@ void computeActDists(Net& net, int l) {
         xdl, xdu, ydl, ydu
     );
 
-    actDists[i*4+0] = xdl;
-    actDists[i*4+1] = xdu;
-    actDists[i*4+2] = ydl;
-    actDists[i*4+3] = ydu;
+    actDists[0] = xdl;
+    actDists[1] = xdu;
+    actDists[2] = ydl;
+    actDists[3] = ydu;
+
+    acts     += 2;
+    actLocs  += 4;
+    actDists += 4;
   }
 }
 
 void computeActs(Net& net, int l) {
-  float *actLocs  = getActLocs (net, l, 0);
+  int   *actLocs  = getActLocs (net, l, 0);
   float *actDists = getActDists(net, l, 0);
   float *acts     = getActs    (net, l, 0);
   float *unit     = getUnit    (net, l, 0);
 
-  for (int i = 0; i < lenLayer(net, l); i++) {
-    float xbl = actLocs[i*4+0];
-    float xbu = actLocs[i*4+1];
-    float ybl = actLocs[i*4+2];
-    float ybu = actLocs[i*4+3];
+  int L = lenLayer(net, l);
+  for (int i = 0; i < L; i++) {
+    int xbl = actLocs[0];
+    int xbu = actLocs[1];
+    int ybl = actLocs[2];
+    int ybu = actLocs[3];
 
-    float ydl = actDists[i*4+0];
-    float ydu = actDists[i*4+1];
-    float xdl = actDists[i*4+2];
-    float xdu = actDists[i*4+3];
+    float xdl = actDists[0];
+    float xdu = actDists[1];
+    float ydl = actDists[2];
+    float ydu = actDists[3];
 
-    float resSub = net.res - 1;
-
-    acts[i] = resSub * resSub * (
+    *acts = (net.res - 1) * (net.res - 1) * (
         unit[I_unit(net, xbl, ybl)] * xdu * ydu +
         unit[I_unit(net, xbu, ybl)] * xdl * ydu +
         unit[I_unit(net, xbl, ybu)] * xdu * ydl +
         unit[I_unit(net, xbu, ybu)] * xdl * ydl
     );
+
+    actLocs  += 4;
+    actDists += 4;
+    acts     += 1;
+    unit     += net.res * net.res;
   }
 }
 
@@ -320,36 +384,6 @@ void forward(Net& net, float* input) {
 }
 
 /**************************** GRADIENT COMPUTATION ****************************/
-
-float act(float x) {
-  return max(0, x);
-  return (x > 0.0) ? 1.0 : 0.0; // a = 1.0;
-  return clamp(x, 0.0, 1.0);
-  return fabs(x);
-  return x;
-}
-
-float gradAct(float x) {
-  // relu(x)
-  if (x >= 0.0) return 1.0;
-  else          return 0.0;
-
-  // hard-tanh(x)
-  if (x >= -1.0 && x <= +1.0) return 1.0;
-  else                        return 0.0;
-
-  // bernoulli(x), hard-sig(x)
-  if (x >= 0.0 && x <= 1.0) return 1.0;
-  else                      return 0.0;
-
-  // abs(x)
-  if (x > 0.0) return +1.0;
-  if (x < 0.0) return -1.0;
-               return  0.0;
-
-  // iden(x)
-  return 1.0;
-}
 
 void backward(Net& net, float* target) {
   return;
@@ -506,7 +540,7 @@ void sgd(
 /************************************ MAIN ************************************/
 
 int main() {
-  // TRAINER VARS
+  // OPTIMISER VARS
   float rate      = 1.0;
   float momentum  = 0.9;
   int   batchSize = 100;
@@ -519,17 +553,36 @@ int main() {
 
   // FEED-FORWARD TEST
   float* input = new float[dim];
-  //for (int i = 0; i < dim; i++)
-    //input[i] = 1.0;
-  //input[0] = 0.3;
-  //input[1] = 0.2;
-  //input[2] = 0.9;
-  //input[3] = 0.1;
+  input[0] = 0.0;
+  input[1] = 0.0;
+  input[2] = 0.1;
+  input[3] = 0.2;
 
-  for (int i = 0; i < 10000; i++) {
-    forward(net, input);
-  }
+  forward(net, input);
   std::cout << *net.output << std::endl;
+  //for (int i = 0; i < 5000; i++) {
+    //forward(net, input);
+    //std::cout << *net.output << std::endl;
+  //}
+
+  //std::cout << "ActLocs:" << std::endl;
+  //for (int i = 0; i < net.numUnits*4; i++) {
+    //std::cout << net.actLocs[i] << " ";
+    //if ((i + 1) % 4 == 0) std:: cout << "  ";
+  //}
+  //std::cout << std::endl;
+
+  //std::cout << "ActDists:" << std::endl;
+  //for (int i = 0; i < net.numUnits*4; i++) {
+    //std::cout << net.actDists[i] << " ";
+    //if ((i + 1) % 4 == 0) std:: cout << "  ";
+  //}
+  //std::cout << std::endl;
+
+  //std::cout << "Acts:" << std::endl;
+  //for (int i = 0; i < net.numUnits; i++)
+    //std::cout << net.acts[i] << " ";
+  //std::cout << std::endl;
 
   return 0;
 
@@ -541,33 +594,4 @@ int main() {
   loadMnist(inputs, targets, numExamples);
 
   sgd(net, inputs, targets, numExamples, batchSize, rate, momentum);
-
-  //// TRAIN
-  //for (int i = 0; i < 100000; i++) {
-    //sgd(net, inputs, targets, numExamples, batchSize, rate, momentum);
-    //std::cout << "Error (train, MSE): " << obj(net, inputs, targets, 400) << "\t";
-    //std::cout << "Error (train,   %): " << classificationError(net, inputs, targets, 400);
-    //std::cout << std::endl;
-    //std::cout << "Error (test,  MSE): " << obj(net, &inputs[49999], &targets[49999], 400) << "\t";
-    //std::cout << "Error (test,    %): " << classificationError(net, &inputs[49999], &targets[49999], 400);
-    //std::cout << std::endl;
-
-    //// PRINT OUTPUTS
-    //std::cout << std::endl << "outputs" << std::endl;
-    //for (int i = 0; i < 10; i++) {
-      //forward(net, inputs[i]);
-      //printVector(net.output, net.dimOutput);
-    //}
-  //}
-
-
-  //// PRINT INPUTS
-  //std::cout << std::endl << "inputs" << std::endl;
-  //for (int i = 0; i < 10; i++)
-    //printMatrix(inputs[i], 28, 28);
-
-  //// PRINT TARGETS
-  //std::cout << std::endl << "targets" << std::endl;
-  //for (int i = 0; i < 10; i++)
-    //printVector(targets[i], net.dimOutput);
 }

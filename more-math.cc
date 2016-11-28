@@ -1,10 +1,6 @@
 #include <math.h>
 #include "math.h"
 
-int pow2(int x) {
-  return 1 << x;
-}
-
 float clamp(float x, float min, float max) {
   if (x < min) return min;
   if (x > max) return max;
