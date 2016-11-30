@@ -24,8 +24,9 @@ struct Net {
   float *input;
   float *output;
 
-  int   *actLocs;
-  float *actDists;
+  int   *cPtLocs;
+  float *cPts;
+  float *cPtDists;
   float *acts;
 };
 
@@ -67,19 +68,27 @@ int I_acts(Net& net, int l) {
   return I_acts(net, l, 0);
 }
 
-int I_actLocs(Net& net, int l, int i) {
+int I_cPtLocs(Net& net, int l, int i) {
   return numUnitsAbove(net, l, i) * 4;
 }
 
-int I_actLocs(Net& net, int l) {
-  return I_actLocs(net, l, 0);
+int I_cPtLocs(Net& net, int l) {
+  return I_cPtLocs(net, l, 0);
 }
 
-int I_actDists(Net& net, int l, int i) {
+int I_cPtDists(Net& net, int l, int i) {
   return numUnitsAbove(net, l, i) * 4;
 }
 
-int I_actDists(Net& net, int l) {
+int I_cPtDists(Net& net, int l) {
+  return numUnitsAbove(net, l, 0) * 4;
+}
+
+int I_cPts(Net& net, int l, int i) {
+  return numUnitsAbove(net, l, i) * 4;
+}
+
+int I_cPts(Net& net, int l) {
   return numUnitsAbove(net, l, 0) * 4;
 }
 
@@ -118,20 +127,28 @@ float* getActs(Net& net, int l) {
   return getActs(net, l, 0);
 }
 
-int* getActLocs(Net& net, int l, int i) {
-  return &net.actLocs[I_actLocs(net, l, i)];
+int* getCPtLocs(Net& net, int l, int i) {
+  return &net.cPtLocs[I_cPtLocs(net, l, i)];
 }
 
-int* getActLocs(Net& net, int l) {
-  return getActLocs(net, l, 0);
+int* getCPtLocs(Net& net, int l) {
+  return getCPtLocs(net, l, 0);
 }
 
-float* getActDists(Net& net, int l, int i) {
-  return &net.actDists[I_actDists(net, l, i)];
+float* getCPts(Net& net, int l, int i) {
+  return &net.cPts[I_cPts(net, l, i)];
 }
 
-float* getActDists(Net& net, int l) {
-  return getActDists(net, l, 0);
+float* getCPts(Net& net, int l) {
+  return getCPts(net, l, 0);
+}
+
+float* getCPtDists(Net& net, int l, int i) {
+  return &net.cPtDists[I_cPtDists(net, l, i)];
+}
+
+float* getCPtDists(Net& net, int l) {
+  return getCPtDists(net, l, 0);
 }
 
 /********************************** PRINTING **********************************/
@@ -188,9 +205,10 @@ void allocNet(Net& net) {
   net.momentum     = new float[net.numUnits*net.res*net.res];
   net.params       = new float[net.numUnits*net.res*net.res];
 
+  net.cPtLocs      = new   int[net.numUnits*4];
+  net.cPts         = new float[net.numUnits*4];
+  net.cPtDists     = new float[net.numUnits*4];
   net.acts         = new float[net.numUnits];
-  net.actLocs      = new   int[net.numUnits*4];
-  net.actDists     = new float[net.numUnits*4];
 }
 
 float abs1(float x, float y) { return fabs(x + y - 1.0); }
@@ -280,9 +298,9 @@ void distPairs(
   distPair(net, y, ybl, ybu, ydl, ydu);
 }
 
-void computeActLocs(Net& net, int l) {
-  // Figure out where the previous layer of `acts` and `actLocs` is in memory
-  int   *actLocs = getActLocs(net, l);
+void computeCPtLocs(Net& net, int l) {
+  // Figure out where the previous layer of `acts` and `cPtLocs` is in memory
+  int   *cPtLocs = getCPtLocs(net, l);
   float *acts    = getActs   (net, l-1);
 
   // Compute act locs
@@ -294,31 +312,31 @@ void computeActLocs(Net& net, int l) {
     int xbl, xbu, ybl, ybu;
     binPairs(net, x, y, xbl, xbu, ybl, ybu);
 
-    actLocs[0] = xbl;
-    actLocs[1] = xbu;
-    actLocs[2] = ybl;
-    actLocs[3] = ybu;
+    cPtLocs[0] = xbl;
+    cPtLocs[1] = xbu;
+    cPtLocs[2] = ybl;
+    cPtLocs[3] = ybu;
 
     acts    += 2;
-    actLocs += 4;
+    cPtLocs += 4;
   }
 }
 
-void computeActDists(Net& net, int l) {
-  int   *actLocs  = getActLocs (net, l);
-  float *actDists = getActDists(net, l);
+void computeCPtDists(Net& net, int l) {
+  int   *cPtLocs  = getCPtLocs (net, l);
+  float *cPtDists = getCPtDists(net, l);
   float *acts     = getActs    (net, l-1);
 
-  // Compute `actDists`
+  // Compute `cPtDists`
   int L = lenLayer(net, l);
   for (int i = 0; i < L; i++) {
     float x = acts[0];
     float y = acts[1];
 
-    int xbl = actLocs[0];
-    int xbu = actLocs[1];
-    int ybl = actLocs[2];
-    int ybu = actLocs[3];
+    int xbl = cPtLocs[0];
+    int xbu = cPtLocs[1];
+    int ybl = cPtLocs[2];
+    int ybu = cPtLocs[3];
 
     float xdl, xdu, ydl, ydu;
     distPairs(
@@ -327,53 +345,75 @@ void computeActDists(Net& net, int l) {
         xdl, xdu, ydl, ydu
     );
 
-    actDists[0] = xdl;
-    actDists[1] = xdu;
-    actDists[2] = ydl;
-    actDists[3] = ydu;
+    cPtDists[0] = xdl;
+    cPtDists[1] = xdu;
+    cPtDists[2] = ydl;
+    cPtDists[3] = ydu;
 
     acts     += 2;
-    actLocs  += 4;
-    actDists += 4;
+    cPtLocs  += 4;
+    cPtDists += 4;
+  }
+}
+
+void computeCPts(Net& net, int l) {
+  int   *cPtLocs  = getCPtLocs(net, l, 0);
+  float *cPts     = getCPts   (net, l, 0);
+  float *unit     = getUnit   (net, l, 0);
+
+  int L = lenLayer(net, l);
+  for (int i = 0; i < L; i++) {
+    int xbl = cPtLocs[0];
+    int xbu = cPtLocs[1];
+    int ybl = cPtLocs[2];
+    int ybu = cPtLocs[3];
+
+    cPts[0] = unit[I_unit(net, xbl, ybl)];
+    cPts[1] = unit[I_unit(net, xbu, ybl)];
+    cPts[2] = unit[I_unit(net, xbl, ybu)];
+    cPts[3] = unit[I_unit(net, xbu, ybu)];
+
+    cPtLocs  += 4;
+    cPts     += 4;
+    unit     += net.res * net.res;
   }
 }
 
 void computeActs(Net& net, int l) {
-  int   *actLocs  = getActLocs (net, l, 0);
-  float *actDists = getActDists(net, l, 0);
+  float *cPts     = getCPts    (net, l, 0);
+  float *cPtDists = getCPtDists(net, l, 0);
   float *acts     = getActs    (net, l, 0);
-  float *unit     = getUnit    (net, l, 0);
 
   int L = lenLayer(net, l);
   for (int i = 0; i < L; i++) {
-    int xbl = actLocs[0];
-    int xbu = actLocs[1];
-    int ybl = actLocs[2];
-    int ybu = actLocs[3];
+    float xlyl = cPts[0];
+    float xuyl = cPts[1];
+    float xlyu = cPts[2];
+    float xuyu = cPts[3];
 
-    float xdl = actDists[0];
-    float xdu = actDists[1];
-    float ydl = actDists[2];
-    float ydu = actDists[3];
+    float xdl = cPtDists[0];
+    float xdu = cPtDists[1];
+    float ydl = cPtDists[2];
+    float ydu = cPtDists[3];
 
-    *acts = (net.res - 1) * (net.res - 1) * (
-        unit[I_unit(net, xbl, ybl)] * xdu * ydu +
-        unit[I_unit(net, xbu, ybl)] * xdl * ydu +
-        unit[I_unit(net, xbl, ybu)] * xdu * ydl +
-        unit[I_unit(net, xbu, ybu)] * xdl * ydl
+    acts[0] = (net.res - 1) * (net.res - 1) * (
+        xlyl * xdu * ydu +
+        xuyl * xdl * ydu +
+        xlyu * xdu * ydl +
+        xuyu * xdl * ydl
     );
 
-    actLocs  += 4;
-    actDists += 4;
+    cPts     += 4;
+    cPtDists += 4;
     acts     += 1;
-    unit     += net.res * net.res;
   }
 }
 
 void forward(Net& net) {
   for (int i = 0; i < net.depth; i++) {
-    computeActLocs (net, i);
-    computeActDists(net, i);
+    computeCPtLocs (net, i);
+    computeCPts    (net, i);
+    computeCPtDists(net, i);
     computeActs    (net, i);
   }
 }
@@ -546,7 +586,7 @@ int main() {
   int   batchSize = 100;
 
   // MODEL VARS
-  int   dim = 4;
+  int   dim = 128*128;
   int   res = 10;
   float reg = 0.001;
   Net net = makeNet(dim, res, reg);
@@ -560,21 +600,21 @@ int main() {
 
   forward(net, input);
   std::cout << *net.output << std::endl;
-  //for (int i = 0; i < 5000; i++) {
-    //forward(net, input);
-    //std::cout << *net.output << std::endl;
-  //}
+  for (int i = 0; i < 5000; i++) {
+    forward(net, input);
+  }
+  std::cout << *net.output << std::endl;
 
-  //std::cout << "ActLocs:" << std::endl;
+  //std::cout << "CPtLocs:" << std::endl;
   //for (int i = 0; i < net.numUnits*4; i++) {
-    //std::cout << net.actLocs[i] << " ";
+    //std::cout << net.cPtLocs[i] << " ";
     //if ((i + 1) % 4 == 0) std:: cout << "  ";
   //}
   //std::cout << std::endl;
 
-  //std::cout << "ActDists:" << std::endl;
+  //std::cout << "CPtDists:" << std::endl;
   //for (int i = 0; i < net.numUnits*4; i++) {
-    //std::cout << net.actDists[i] << " ";
+    //std::cout << net.cPtDists[i] << " ";
     //if ((i + 1) % 4 == 0) std:: cout << "  ";
   //}
   //std::cout << std::endl;
