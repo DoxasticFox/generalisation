@@ -9,11 +9,11 @@
 #include "mnist.h"
 #include "more-math.h"
 
-struct ExampleGrad { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct WGrads      { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct CPtLocs     { int   xbl;  int   xbu;  int   ybl;  int   ybu;  };
-struct CPts        { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct CPtDists    { float xdl;  float xdu;  float ydl;  float ydu;  };
+struct ExampleGrads { float xlyl; float xuyl; float xlyu; float xuyu; };
+struct WGrads       { float xlyl; float xuyl; float xlyu; float xuyu; };
+struct CPtLocs      { int   xbl;  int   xbu;  int   ybl;  int   ybu;  };
+struct CPts         { float xlyl; float xuyl; float xlyu; float xuyu; };
+struct CPtDists     { float xdl;  float xdu;  float ydl;  float ydu;  };
 
 struct Net {
   int    dim; // Dimensionality of input
@@ -22,13 +22,15 @@ struct Net {
   int    depth;
   int    numUnits;
 
-  float       *batchGrads;
-  ExampleGrad *exampleGrads;
-  float       *xGrads;
-  float       *yGrads;
-  WGrads      *wGrads;
-  float       *momentum;
-  float       *params;
+  float        *params;
+  float        *momentum;
+  float        *batchGrads;
+  float        *xRegGrads;
+  ExampleGrads *exampleGrads;
+  float        *xGrads;
+  float        *yGrads;
+  WGrads       *wGrads;
+  float        *backGrads;
 
   float *input;
   float *output;
@@ -131,6 +133,30 @@ CPtDists* getCPtDists(Net& net, int l) {
   return getCPtDists(net, l, 0);
 }
 
+float* getXGrads(Net& net, int l, int i) {
+  return &net.xGrads[I(net, l, i)];
+}
+
+float* getXGrads(Net& net, int l) {
+  return &net.xGrads[I(net, l, 0)];
+}
+
+float* getYGrads(Net& net, int l, int i) {
+  return &net.yGrads[I(net, l, i)];
+}
+
+float* getYGrads(Net& net, int l) {
+  return &net.yGrads[I(net, l, 0)];
+}
+
+float* getBackGrads(Net& net, int l, int i) {
+  return &net.backGrads[I(net, l, i)];
+}
+
+float* getBackGrads(Net& net, int l) {
+  return &net.backGrads[I(net, l, 0)];
+}
+
 /********************************** PRINTING **********************************/
 
 void printParams(std::ofstream& file, Net& net, int l, int i, int x) {
@@ -177,16 +203,27 @@ void printParams(std::string filename, Net& net) {
   file.close();
 }
 
+void printParams(int i, Net& net) {
+  // Convert index `i` into file filename
+  char filename[100];
+  snprintf(filename, sizeof(filename), "plots/net-%09d.net", i);
+  std::string filenameAsStdStr = filename;
+
+  printParams(filenameAsStdStr, net);
+}
+
 /*************************** NETWORK INITIALISATION ***************************/
 
 void allocNet(Net& net) {
-  net.batchGrads   = new float      [net.numUnits*net.res*net.res];
-  net.exampleGrads = new ExampleGrad[net.numUnits];
-  net.xGrads       = new float      [net.numUnits];
-  net.yGrads       = new float      [net.numUnits];
-  net.wGrads       = new wGrads     [net.numUnits];
-  net.momentum     = new float      [net.numUnits*net.res*net.res];
-  net.params       = new float      [net.numUnits*net.res*net.res];
+  net.batchGrads   = new float       [net.numUnits*net.res*net.res];
+  net.exampleGrads = new ExampleGrads[net.numUnits];
+  net.xRegGrads    = new float       [net.numUnits*net.res*net.res];
+  net.xGrads       = new float       [net.numUnits];
+  net.yGrads       = new float       [net.numUnits];
+  net.wGrads       = new WGrads      [net.numUnits];
+  net.backGrads    = new float       [net.numUnits];
+  net.momentum     = new float       [net.numUnits*net.res*net.res];
+  net.params       = new float       [net.numUnits*net.res*net.res];
 
   net.cPtLocs      = new CPtLocs [net.numUnits];
   net.cPts         = new CPts    [net.numUnits];
@@ -210,6 +247,9 @@ void initUnit(Net& net, int l, int i) {
 
       if (a1) unit[I_unit(net, x, y)] = abs1(fx, fy);
       if (a2) unit[I_unit(net, x, y)] = abs2(fx, fy);
+
+      // TODO: Undo
+      unit[I_unit(net, x, y)] = 0.5;
     }
   }
 }
@@ -223,11 +263,11 @@ void initNet(Net& net) {
 Net makeNet(int dim, int res, float reg) {
   Net net;
 
-  net.dim      = dim;
+  net.depth    = ceil(log2(dim));
+  net.dim      = pow(2, net.depth);
   net.res      = res;
   net.reg      = reg;
-  net.depth    = ceil(log2(dim));
-  net.numUnits = dim - 1;
+  net.numUnits = net.dim - 1;
 
   allocNet(net);
   initNet (net);
@@ -368,53 +408,226 @@ void forward(Net& net, float* input) {
 /**************************** GRADIENT COMPUTATION ****************************/
 
 void computeXGrads(Net& net) {
-  return;
+  CPtDists *cPtDists = net.cPtDists;
+  CPts     *cPts     = net.cPts;
+  for (int i = 0; i < net.numUnits; i++) {
+    net.xGrads[i] = (net.res - 1) * (net.res - 1) * (
+        cPtDists[i].ydu * (cPts[i].xuyl - cPts[i].xlyl) +
+        cPtDists[i].ydl * (cPts[i].xuyu - cPts[i].xlyu)
+    );
+  }
 }
 
 void computeYGrads(Net& net) {
-  return;
+  CPtDists *cPtDists = net.cPtDists;
+  CPts     *cPts     = net.cPts;
+  for (int i = 0; i < net.numUnits; i++) {
+    net.yGrads[i] = (net.res - 1) * (net.res - 1) * (
+        cPtDists[i].xdu * (cPts[i].xlyu - cPts[i].xlyl) +
+        cPtDists[i].xdl * (cPts[i].xuyu - cPts[i].xuyl)
+    );
+  }
 }
 
 void computeWGrads(Net& net) {
-  return;
+  CPtDists *cPtDists = net.cPtDists;
+  WGrads   *wGrads   = net.wGrads;
+  float    norm      = (net.res - 1) * (net.res - 1);
+  for (int i = 0; i < net.numUnits; i++) {
+    wGrads[i].xlyl = norm * cPtDists[i].xdu * cPtDists[i].ydu;
+    wGrads[i].xlyu = norm * cPtDists[i].xdu * cPtDists[i].ydl;
+    wGrads[i].xuyl = norm * cPtDists[i].xdl * cPtDists[i].ydu;
+    wGrads[i].xuyu = norm * cPtDists[i].xdl * cPtDists[i].ydl;
+  }
+}
+
+void computeBackGrads(Net& net, float target) {
+  net.backGrads[net.numUnits - 1] = *net.output - target;
+
+  for (int i = net.depth - 1; i >= 1; i--) {
+    int L = lenLayer(net, i);
+
+    float *xGrads        = getXGrads(net, i);
+    float *yGrads        = getYGrads(net, i);
+    float *prevBackGrads = getBackGrads(net, i-1);
+    float *nextBackGrads = getBackGrads(net, i);
+
+    for (int j = L-1; j >= 0; j--) {
+      prevBackGrads[2*j+0] = nextBackGrads[j] * xGrads[j];
+      prevBackGrads[2*j+1] = nextBackGrads[j] * yGrads[j];
+    }
+  }
 }
 
 void computeExampleGrads(Net& net) {
-  return;
+  ExampleGrads *exampleGrads = net.exampleGrads;
+  float        *backGrads    = net.backGrads;
+  WGrads       *wGrads       = net.wGrads;
+
+  for (int i = 0; i < net.numUnits; i++) {
+    exampleGrads[i].xlyl = backGrads[i] * wGrads[i].xlyl;
+    exampleGrads[i].xlyu = backGrads[i] * wGrads[i].xlyu;
+    exampleGrads[i].xuyl = backGrads[i] * wGrads[i].xuyl;
+    exampleGrads[i].xuyu = backGrads[i] * wGrads[i].xuyu;
+  }
 }
 
-void backward(Net& net, float* target) {
+void backward(Net& net, float target) {
   computeXGrads(net);
   computeYGrads(net);
   computeWGrads(net);
+  computeBackGrads(net, target);
   computeExampleGrads(net);
 }
 
-//void computeGradient(Net& net, float* input, float* target) {
-  //int m, n;
+void computeRegularisationGrads(Net& net) {
+  float *unit;
+  float *xRegGrads;
+  float *batchGrads;
 
-  //forward (net, input);
-  //backward(net, target);
+  // Compute regularisation along x direction
+  unit      = net.params;
+  xRegGrads = net.xRegGrads;
+  for (int i = 0; i < net.numUnits; i++) {
+    for (int x = 0; x < net.res; x++) {
+      for (int y = 0; y < net.res; y++) {
+        if (x == 0) {
+          xRegGrads[I_unit(net, x, y)] = unit[I_unit(net, x+0, y)] +
+                                         unit[I_unit(net, x+1, y)];
+        } else if (x == net.res - 1) {
+          xRegGrads[I_unit(net, x, y)] = unit[I_unit(net, x-1, y)] +
+                                         unit[I_unit(net, x+0, y)];
+        } else {
+          xRegGrads[I_unit(net, x, y)] = unit[I_unit(net, x-1, y)] +
+                                         unit[I_unit(net, x+0, y)] +
+                                         unit[I_unit(net, x+1, y)];
+        }
+      }
+    }
+    unit      += net.res * net.res;
+    xRegGrads += net.res * net.res;
+  }
+
+  // Compute regularisation along y direction
+  xRegGrads  = net.xRegGrads;
+  batchGrads = net.batchGrads;
+  for (int i = 0; i < net.numUnits; i++) {
+    for (int x = 0; x < net.res; x++) {
+      for (int y = 0; y < net.res; y++) {
+        if (y == 0) {
+          xRegGrads[I_unit(net, x, y)] = batchGrads[I_unit(net, x, y+0)] +
+                                         batchGrads[I_unit(net, x, y+1)];
+        } else if (y == net.res - 1) {
+          xRegGrads[I_unit(net, x, y)] = batchGrads[I_unit(net, x, y-1)] +
+                                         batchGrads[I_unit(net, x, y+0)];
+        } else {
+          xRegGrads[I_unit(net, x, y)] = batchGrads[I_unit(net, x, y-1)] +
+                                         batchGrads[I_unit(net, x, y+0)] +
+                                         batchGrads[I_unit(net, x, y+1)];
+        }
+      }
+    }
+    xRegGrads  += net.res * net.res;
+    batchGrads += net.res * net.res;
+  }
+
+  // Compute complete regularisation
+  batchGrads = net.batchGrads;
+  unit       = net.params;
+  for (int i = 0; i < net.numUnits; i++) {
+    for (int x = 0; x < net.res; x++) {
+      for (int y = 0; y < net.res; y++) {
+        bool isCorner = (x == 0 || x == net.res - 1) &&
+                        (y == 0 || y == net.res - 1);
+        bool isEdge   = (x == 0 || x == net.res - 1  ||
+                         y == 0 || y == net.res - 1) &&
+                        !isCorner;
+
+        int c;
+        if      (isCorner) c = 3;
+        else if (isEdge)   c = 5;
+        else               c = 9;
+
+        batchGrads[I_unit(net, x, y)] = c * unit  [I_unit(net, x, y)] -
+                                        batchGrads[I_unit(net, x, y)];
+      }
+    }
+    unit       += net.res * net.res;
+    batchGrads += net.res * net.res;
+  }
+}
+
+void addBatchGrads(Net& net, float rate) {
+  ExampleGrads *exampleGrads = net.exampleGrads;
+  CPtLocs      *cPtLocs      = net.cPtLocs;
+  float        *batchGrads   = net.batchGrads;
+
+  for (int i = 0; i < net.numUnits; i++) {
+    int xbl = cPtLocs[i].xbl;
+    int xbu = cPtLocs[i].xbu;
+    int ybl = cPtLocs[i].ybl;
+    int ybu = cPtLocs[i].ybu;
+
+    batchGrads[I_unit(net, xbl, ybl)] = exampleGrads[i].xlyl;
+    batchGrads[I_unit(net, xbu, ybl)] = exampleGrads[i].xuyl;
+    batchGrads[I_unit(net, xbl, ybu)] = exampleGrads[i].xlyu;
+    batchGrads[I_unit(net, xbu, ybu)] = exampleGrads[i].xuyu;
+
+    batchGrads += net.res * net.res;
+  }
+}
+
+/* Performs a single weight update based on the example given by the
+ * (`input`, `target`) pair.
+ */
+void sgd(
+    Net& net,
+    float* input, float target,
+    float rate
+) {
+  forward (net, input);
+  backward(net, target);
+  addBatchGrads(net, rate);
+}
 
 
-  //std::cout << "computeGradient [acts]" << std::endl;
-  //for (int i = 0; i <= net.numLayers; i++)
-  //printVector(net, net.acts, i);
-  //std::cout << std::endl;
+void sgd(
+    Net& net,
+    float** inputs, float* targets,
+    int numExamples,
+    int batchSize,
+    float rate=1.0,
+    float momentum=0.9
+) {
+  // Compute gradient's regularisation component
+  // TODO: Undo
+  //computeRegularisationGrads(net);
 
-  //std::cout << "computeGradient [weights]" << std::endl;
-  //for (int i = 0; i < net.numLayers; i++)
-  //printMatrix(net, net.weights, i);
+  // Compute gradient's batch component
+  std::uniform_int_distribution<int> distribution(0, numExamples-1);
+  for (int i = 0; i < batchSize; i++) {
+    int j = distribution(generator);
+    sgd(net, inputs[j], targets[j], 1.0/batchSize);
+  }
 
-  //std::cout << "computeGradient [deltas]" << std::endl;
-  //for (int i = 0; i <= net.numLayers; i++)
-  //printVector(net, net.deltas, i);
-  //std::cout << std::endl;
+  // Compute momentum
+  for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+    net.momentum[i] = rate * net.batchGrads[i] + momentum * net.momentum[i];
 
-  //std::cout << "computeGradient [gradients]" << std::endl;
-  //for (int i = 0; i < net.numLayers; i++)
-  //printMatrix(net, net.gradients, i);
-//}
+  // Update params
+  for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+    net.params[i] -= net.momentum[i];
+
+  // TODO: Undo
+  //// Retard momentum
+  //for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+    //if (net.params[i] < 0.0 || net.params[i] > 1.0)
+      //net.momentum[i] = 0.0;
+
+  // Clamp params
+  for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+      net.params[i] = clamp(net.params[i], 0.0, 1.0);
+}
 
 /******************************** BENCHMARKING ********************************/
 
@@ -502,40 +715,22 @@ void computeGradientNumerically(Net& net, float* input, float* target) {
   //printMatrix(net, net.gradients, i);
 }
 
-/********************************** LEARNING **********************************/
+/******************************* SYNTHETIC DATA *******************************/
 
-/* Performs a single weight update based on the example given by the
- * (`input`, `target`) pair.
- */
-void sgd(
-    Net& net,
-    float* input, float* target,
-    float rate,
-    float momentum
-) {
-  //int m, n;
-  //computeGradient(net, input, target);
+void makeData(float &**input, float &*output, int dim, int numExamples) {
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  input = new float*[numExamples];
+  for (int i = 0; i < numExamples; i++)
+    input[i] = new float[dim];
 
-  // 1. Compute weight update
-
-  // 3. Update weights
-}
+  for (int i = 0; i < numExamples; i++)
+    for(int j = 0; j < dim; j++)
+      //init
 
 
-void sgd(
-    Net& net,
-    float** inputs, float** targets,
-    int numExamples,
-    int batchSize,
-    float rate=1.0,
-    float momentum=0.9
-) {
-  std::uniform_int_distribution<int> distribution(0, numExamples-1);
 
-  for (int i = 0; i < batchSize; i++) {
-    int j = distribution(generator);
-    sgd(net, inputs[j], targets[j], rate, momentum);
-  }
+
+  output
 }
 
 /************************************ MAIN ************************************/
@@ -547,52 +742,57 @@ int main() {
   int   batchSize = 100;
 
   // MODEL VARS
-  int   dim = 128*128;
+  int   dim = 4;
   int   res = 10;
   float reg = 0.001;
   Net net = makeNet(dim, res, reg);
 
   // FEED-FORWARD TEST
-  float* input = new float[dim];
-  input[0] = 0.0;
-  input[1] = 0.0;
-  input[2] = 0.1;
-  input[3] = 0.2;
+  float** input;
+  float* output;
+  makeData(input, output);
 
-  forward(net, input);
-  std::cout << *net.output << std::endl;
-  for (int i = 0; i < 5000; i++) {
-    forward(net, input);
+  for (int j = 0; j < 10; j++) {
+    for (int i = 0; i < 1000; i++) {
+      forward(net, input[0]);
+      sgd(net, input, output, 2, 1, 0.01, 0.0);
+    }
+
+    std::cout << *net.output << std::endl;
+    printParams(j, net);
   }
-  std::cout << *net.output << std::endl;
 
-  //std::cout << "CPtLocs:" << std::endl;
-  //for (int i = 0; i < net.numUnits*4; i++) {
-    //std::cout << net.cPtLocs[i] << " ";
-    //if ((i + 1) % 4 == 0) std:: cout << "  ";
-  //}
-  //std::cout << std::endl;
+  std::cout << "CPtLocs:" << std::endl;
+  for (int i = 0; i < net.numUnits; i++) {
+    std::cout << net.cPtLocs[i].xbl << " ";
+    std::cout << net.cPtLocs[i].xbu << " ";
+    std::cout << net.cPtLocs[i].ybl << " ";
+    std::cout << net.cPtLocs[i].ybu << " ";
+    std::cout << "   ";
+  }
+  std::cout << std::endl;
 
-  //std::cout << "CPtDists:" << std::endl;
-  //for (int i = 0; i < net.numUnits*4; i++) {
-    //std::cout << net.cPtDists[i] << " ";
-    //if ((i + 1) % 4 == 0) std:: cout << "  ";
-  //}
-  //std::cout << std::endl;
+  std::cout << "CPtDists:" << std::endl;
+  for (int i = 0; i < net.numUnits; i++) {
+    std::cout << net.cPtDists[i].xdu << " ";
+    std::cout << net.cPtDists[i].xdl << " ";
+    std::cout << net.cPtDists[i].xdu << " ";
+    std::cout << net.cPtDists[i].xdl << " ";
+    std::cout << "   ";
+  }
+  std::cout << std::endl;
 
-  //std::cout << "Acts:" << std::endl;
-  //for (int i = 0; i < net.numUnits; i++)
-    //std::cout << net.acts[i] << " ";
-  //std::cout << std::endl;
+  std::cout << "Acts:" << std::endl;
+  for (int i = 0; i < net.numUnits; i++)
+    std::cout << net.acts[i] << " ";
+  std::cout << std::endl;
 
-  return 0;
+  //// LOAD MNIST
+  //int numExamples;
+  //float** inputs;
+  //float** targets;
 
-  // LOAD MNIST
-  int numExamples;
-  float** inputs;
-  float** targets;
+  //loadMnist(inputs, targets, numExamples);
 
-  loadMnist(inputs, targets, numExamples);
-
-  sgd(net, inputs, targets, numExamples, batchSize, rate, momentum);
+  //sgd(net, inputs, targets, numExamples, batchSize, rate, momentum);
 }

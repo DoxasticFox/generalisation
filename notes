@@ -1,2 +1,6 @@
-17.64 seconds / 5000 =   3.528 milliseconds
-36.34 seconds / 100  = 363.4   milliseconds
+C++
+  17.64 seconds / 5000 =   3.528 milliseconds
+   9.25 seconds / 5000 =   1.85  milliseconds
+
+Python:
+  36.34 seconds / 100  = 363.4   milliseconds
