@@ -68,6 +68,6 @@ def evalUnit(unit, x, y):
     )
 
 ################################################################################
-for i in range(10):
+for i in range(0, 10000):
     execfile('plots/net-%09d.net' % i)
     plot(net, i)

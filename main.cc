@@ -21,6 +21,7 @@ struct Net {
   float  reg;
   int    depth;
   int    numUnits;
+  int    unitSize;
 
   float        *params;
   float        *momentum;
@@ -247,10 +248,6 @@ void initUnit(Net& net, int l, int i) {
 
       if (a1) unit[I_unit(net, x, y)] = abs1(fx, fy);
       if (a2) unit[I_unit(net, x, y)] = abs2(fx, fy);
-
-      // TODO: Undo
-      unit[I_unit(net, x, y)] = 0.5;
-      unit[I_unit(net, x, y)] = (rand() % 100) / 99.0;
     }
   }
 }
@@ -269,6 +266,7 @@ Net makeNet(int dim, int res, float reg) {
   net.res      = res;
   net.reg      = reg;
   net.numUnits = net.dim - 1;
+  net.unitSize = res * res;
 
   allocNet(net);
   initNet (net);
@@ -588,6 +586,17 @@ void addExampleGrads(Net& net, float rate) {
   }
 }
 
+void normaliseContrast(Net& net) {
+  for (int i = 0; i < net.numUnits - 1; i++) {
+    float *unit = &net.params[i*net.unitSize];
+    float unitMin = min(unit, net.unitSize);
+    float unitMax = max(unit, net.unitSize);
+
+    sub(unit, net.unitSize, unitMin);
+    div(unit, net.unitSize, unitMax - unitMin);
+  }
+}
+
 /* Performs a single weight update based on the example given by the
  * (`input`, `target`) pair.
  */
@@ -628,43 +637,43 @@ void sgd(
   for (int i = 0; i < net.numUnits * net.res * net.res; i++)
     net.params[i] -= net.momentum[i];
 
-  // TODO: Undo
   //// Retard momentum
-  //for (int i = 0; i < net.numUnits * net.res * net.res; i++)
-    //if (net.params[i] < 0.0 || net.params[i] > 1.0)
-      //net.momentum[i] = 0.0;
+  for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+    if (net.params[i] < 0.0 || net.params[i] > 1.0)
+      net.momentum[i] = 0.0;
 
   // Clamp params
   for (int i = 0; i < net.numUnits * net.res * net.res; i++)
       net.params[i] = clamp(net.params[i], 0.0, 1.0);
+
+  normaliseContrast(net);
 }
 
 /******************************** BENCHMARKING ********************************/
 
-float classificationError(Net& net, float* input, float* target) {
+float classificationError(Net& net, float* input, float target) {
   forward(net, input);
 
-  //int   bestIndex = 0;
-  //float bestDist  = FLT_MAX;
-  //for (int i = 0; i < net.dimOutput; i++) {
-    //float thisDist = fabs(net.output[i] - 1.0);
-    //if (thisDist < bestDist) {
-      //bestDist = thisDist;
-      //bestIndex = i;
-    //}
-  //}
-
-  //if (fabs(target[bestIndex] - 1.0) < FLT_EPSILON)
-    //return 0.0;
-  //else
-    //return 100.0;
+  if (roundf(*net.output) == target) return 0.0;
   return 1.0;
 }
 
-float classificationError(Net& net, float** inputs, float** targets, int numExamples) {
+float classificationError(
+    Net& net,
+    float** inputs,
+    float* targets,
+    int numExamples,
+    int sampleSize=5000
+) {
+  sampleSize = min(sampleSize, numExamples);
+
   float sum = 0.0;
-  for (int i = 0; i < numExamples; i++)
-    sum += classificationError(net, inputs[i], targets[i]) / numExamples;
+  for (int i = 0; i < sampleSize; i++) {
+    std::uniform_int_distribution<int> distribution(0, sampleSize-1);
+    int j = distribution(generator);
+
+    sum += classificationError(net, inputs[j], targets[j]) / sampleSize;
+  }
   return sum;
 }
 
@@ -687,44 +696,6 @@ float obj(Net& net, float** inputs, float** targets, int numExamples) {
   return sum;
 }
 
-/*********************** NUMERICAL GRADIENT COMPUTATION ***********************/
-
-void computeGradientNumerically(Net& net, float* input, float* target) {
-  //int m, n;
-  //float h = 1e-3;
-
-  //for (int i = 0; i < net.numLayers; i++){
-    //for (int j = 0; j < m*n; j++) {
-      //float addObj, subObj;
-
-      //float prev = net.weights[i][j];
-      //net.weights[i][j] = prev + h; addObj = obj(net, input, target);
-      //net.weights[i][j] = prev - h; subObj = obj(net, input, target);
-      //net.weights[i][j] = prev;
-
-      //net.gradients[i][j] = (addObj - subObj) / (2.0 * h);
-    //}
-  //}
-
-  //std::cout << "computeGradientNumerically [acts]" << std::endl;
-  //for (int i = 0; i <= net.numLayers; i++)
-  //printVector(net, net.acts, i);
-  //std::cout << std::endl;
-
-  //std::cout << "computeGradientNumerically [weights]" << std::endl;
-  //for (int i = 0; i < net.numLayers; i++)
-  //printMatrix(net, net.weights, i);
-
-  //std::cout << "computeGradientNumerically [deltas]" << std::endl;
-  //for (int i = 0; i <= net.numLayers; i++)
-  //printVector(net, net.deltas, i);
-  //std::cout << std::endl;
-
-  //std::cout << "computeGradientNumerically [gradients]" << std::endl;
-  //for (int i = 0; i < net.numLayers; i++)
-  //printMatrix(net, net.gradients, i);
-}
-
 /******************************* SYNTHETIC DATA *******************************/
 
 int numOnes(float *input, int dim) {
@@ -736,8 +707,11 @@ int numOnes(float *input, int dim) {
 }
 
 float trueClassifier(float *input, int dim) {
-  if (numOnes(input, dim) % 2) return 1.0;
-  else                         return 0.0;
+  if (max(input, dim) == input[2]) return 1.0;
+
+  //if (numOnes(input, dim) % 2) return 1.0;
+
+  return 0.0;
 }
 
 void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
@@ -756,7 +730,7 @@ void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
     for(int j = 0; j < dim; j++)
       inputs[i][j] = distribution(generator);
 
-  // Determine outputs
+  // Init outputs
   for (int i = 0; i < numExamples; i++)
     outputs[i] = trueClassifier(inputs[i], dim);
 }
@@ -764,64 +738,33 @@ void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
 /************************************ MAIN ************************************/
 
 int main() {
+  // MODEL VARS
+  int   dim = 1024;
+  int   res = 5;
+  float reg = 0.001;
+  Net net = makeNet(dim, res, reg);
+
+  // LOAD MNIST
+  int     digit = 0;
+  int     numExamples;
+  float** inputs;
+  float*  outputs;
+  loadMnist(inputs, outputs, numExamples, digit);
+
   // OPTIMISER VARS
   float rate      = 1.0;
   float momentum  = 0.0;
   int   batchSize = 1000;
 
-  // MODEL VARS
-  int   dim = 4;
-  int   res = 20;
-  float reg = 0.001;
-  Net net = makeNet(dim, res, reg);
-
-  // FEED-FORWARD TEST
-  int     numExamples = 100000;
-  float** inputs;
-  float*  outputs;
-  makeData(inputs, outputs, dim, numExamples);
-
-  for (int j = 0; j < 10; j++) {
-    for (int i = 0; i < 1000; i++) {
+  // OPTIMISE
+  for (int j = 0; j < 10000; j++) {
+    for (int i = 0; i < 1760; i++) {
       sgd(net, inputs, outputs, numExamples, batchSize, rate, momentum);
     }
 
     forward(net, inputs[0]);
     std::cout << *net.output << std::endl;
+    std::cout << "%" << classificationError(net, inputs, outputs, numExamples) * 100 << std::endl;
     printParams(j, net);
   }
-
-  std::cout << "CPtLocs:" << std::endl;
-  for (int i = 0; i < net.numUnits; i++) {
-    std::cout << net.cPtLocs[i].xbl << " ";
-    std::cout << net.cPtLocs[i].xbu << " ";
-    std::cout << net.cPtLocs[i].ybl << " ";
-    std::cout << net.cPtLocs[i].ybu << " ";
-    std::cout << "   ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "CPtDists:" << std::endl;
-  for (int i = 0; i < net.numUnits; i++) {
-    std::cout << net.cPtDists[i].xdu << " ";
-    std::cout << net.cPtDists[i].xdl << " ";
-    std::cout << net.cPtDists[i].xdu << " ";
-    std::cout << net.cPtDists[i].xdl << " ";
-    std::cout << "   ";
-  }
-  std::cout << std::endl;
-
-  std::cout << "Acts:" << std::endl;
-  for (int i = 0; i < net.numUnits; i++)
-    std::cout << net.acts[i] << " ";
-  std::cout << std::endl;
-
-  //// LOAD MNIST
-  //int numExamples;
-  //float** inputs;
-  //float** targets;
-
-  //loadMnist(inputs, targets, numExamples);
-
-  //sgd(net, inputs, targets, numExamples, batchSize, rate, momentum);
 }

@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include "mnist.h"
+#include "math.h"
 #include "more-math.h"
 
 int reverseInt(int i) {
@@ -38,8 +39,10 @@ void loadMnistImages(float**& images, int& numImages) {
 
   // Allocate space
   images = new float*[numImages];
-  for (int i = 0; i < numImages; i++)
-    images[i] = new float[numRows*numCols];
+  for (int i = 0; i < numImages; i++) {
+    int size = pow(2, ceil(log2(numRows*numCols)));
+    images[i] = new float[size];
+  }
 
   // Load data
   for (int i = 0; i < numImages; i++) {
@@ -52,20 +55,13 @@ void loadMnistImages(float**& images, int& numImages) {
   }
 
   // Normalise data
-  for (int i = 0; i < numImages; i++) {
-    float m = mean(images[i], numRows*numCols);
+  for (int i = 0; i < numImages; i++)
     for (int j = 0; j < numRows*numCols; j++)
-      images[i][j] -= m;
-
-    float n = l2Norm(images[i], numRows*numCols);
-    for (int j = 0; j < numRows*numCols; j++)
-      images[i][j] /= n;
-  }
+      images[i][j] /= 255.0;
 }
 
-void loadMnistLabels(float**& labels, int& numLabels) {
+void loadMnistLabels(float*& labels, int& numLabels, int digit) {
   int magicNumber;
-  int numClasses = 10;
   numLabels = -1;
 
   std::ifstream file("./mnist/train-labels.idx1-ubyte", std::ios::binary);
@@ -78,24 +74,26 @@ void loadMnistLabels(float**& labels, int& numLabels) {
   numLabels   = reverseInt(numLabels);
 
   // Allocate space
-  labels = new float*[numLabels];
-  for (int i = 0; i < numLabels; i++)
-    labels[i] = new float[numClasses]();
+  labels = new float[numLabels];
 
   // Load data
   for (int i = 0; i < numLabels; i++) {
     char label;
     file.read(&label, 1);
 
-    labels[i][(int) label] = 1.0;
+    if ((int) label == digit) {
+      labels[i] = 1.0;
+    } else {
+      labels[i] = 0.0;
+    }
   }
 }
 
-void loadMnist(float**& images, float**& labels, int& numExamples) {
+void loadMnist(float**& images, float*& labels, int& numExamples, int digit) {
   int numImages, numLabels;
 
   loadMnistImages(images, numImages);
-  loadMnistLabels(labels, numLabels);
+  loadMnistLabels(labels, numLabels, digit);
 
   if (numImages == numLabels) numExamples = numImages;
   else                        numExamples = -1;

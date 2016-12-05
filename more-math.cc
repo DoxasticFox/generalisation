@@ -1,3 +1,4 @@
+#include <float.h>
 #include <math.h>
 #include "math.h"
 
@@ -10,6 +11,33 @@ float clamp(float x, float min, float max) {
 float max(float x, float y) {
   if (x > y) return x;
   else       return y;
+}
+
+float min(float x, float y) {
+  if (x < y) return x;
+  else       return y;
+}
+
+float min(float *x, int n) {
+  float best = FLT_MAX;
+  for (int i = 0; i < n; i++)
+    if (x[i] < best) best = x[i];
+  return best;
+}
+
+float max(float *x, int n) {
+  float best = FLT_MIN;
+  for (int i = 0; i < n; i++)
+    if (x[i] > best) best = x[i];
+  return best;
+}
+
+void sub(float *x, int n, float c) {
+  for (int i = 0; i < n; i++) x[i] -= c;
+}
+
+void div(float *x, int n, float c) {
+  for (int i = 0; i < n; i++) x[i] /= c;
 }
 
 float mean(float* x, int n) {
