@@ -1,8 +1,73 @@
-#include <iostream>
-#include <fstream>
 #include "mnist.h"
-#include "math.h"
-#include "more-math.h"
+
+float* makeIdentityMap(int n) {
+  float *map = new float[n];
+
+  for (int i = 0; i < n; i++)
+    map[i] = i;
+
+  return map;
+}
+
+float* makeRandomMap(int n) {
+  float *map = makeIdentityMap(n);
+
+  // Shuffle map
+  for (int i = n-1; i >= 0; --i){
+      int j = rand() % (i+1);
+
+      int temp = map[i];
+      map[i] = map[j];
+      map[j] = temp;
+  }
+
+  return map;
+}
+
+void makeQuasiConvMapRec(int x, int y, int lenx, int leny, float* map, int &i) {
+  if (lenx == 0 || leny == 0) return;
+  if (lenx == 1 && leny == 1) {
+    map[i] = x + 28 * y;
+    i++;
+    return;
+  }
+
+  int lenLeft = (lenx+1)/2; int lenRight = lenx - lenLeft;
+  int lenTop  = (leny+1)/2; int lenBot   = leny - lenTop;
+
+  int xLeft = x; int xRight = xLeft+lenLeft;
+  int yTop  = y; int yBot   = yTop +lenTop;
+
+  makeQuasiConvMapRec(xLeft,  yTop, lenLeft,  lenTop, map, i); // Top left
+  makeQuasiConvMapRec(xRight, yTop, lenRight, lenTop, map, i); // Top right
+  makeQuasiConvMapRec(xLeft,  yBot, lenLeft,  lenBot, map, i); // Bot left
+  makeQuasiConvMapRec(xRight, yBot, lenRight, lenBot, map, i); // Bot right
+}
+
+float* makeQuasiConvMap(int n) {
+  float *map = makeIdentityMap(n);
+
+  int i = 0;
+  makeQuasiConvMapRec(0, 0, 28, 28, map, i);
+
+  return map;
+}
+
+void reorderVector(float* v, float* map, int n) {
+  float *tmp = new float[n];
+
+  // 1. Put the reordered vector components in tmp
+  for (int i = 0; i < n; i++) {
+    int idx = map[i];
+    tmp[i] = v[idx];
+  }
+
+  // 2. Copy tmp's contents to v
+  for (int i = 0; i < n; i++)
+    v[i] = tmp[i];
+
+  delete[] tmp;
+}
 
 int reverseInt(int i) {
   unsigned char ch1, ch2, ch3, ch4;
@@ -18,13 +83,19 @@ int reverseInt(int i) {
          ((int) ch4 <<  0);
 }
 
-void loadMnistImages(float**& images, int& numImages) {
+void loadMnistImages(
+    float**& images,
+    int& numImages,
+    std::string prefix,
+    float *map
+) {
   int magicNumber;
   int numRows;
   int numCols;
   numImages = -1;
 
-  std::ifstream file("./mnist/train-images.idx3-ubyte", std::ios::binary);
+  std::string filename = "./mnist/" + prefix + "-images.idx3-ubyte";
+  std::ifstream file(filename, std::ios::binary);
   if (!file.is_open()) return;
 
   file.read((char*) &magicNumber , 4);
@@ -58,13 +129,25 @@ void loadMnistImages(float**& images, int& numImages) {
   for (int i = 0; i < numImages; i++)
     for (int j = 0; j < numRows*numCols; j++)
       images[i][j] /= 255.0;
+
+  // Reorder data
+  if (map)
+    for (int i = 0; i < numImages; i++)
+      reorderVector(images[i], map, numRows*numCols);
+
 }
 
-void loadMnistLabels(float*& labels, int& numLabels, int digit) {
+void loadMnistLabels(
+    float*& labels,
+    int& numLabels,
+    int digit,
+    std::string prefix
+) {
   int magicNumber;
   numLabels = -1;
 
-  std::ifstream file("./mnist/train-labels.idx1-ubyte", std::ios::binary);
+  std::string filename = "./mnist/" + prefix + "-labels.idx1-ubyte";
+  std::ifstream file(filename, std::ios::binary);
   if (!file.is_open()) return;
 
   file.read((char*) &magicNumber , 4);
@@ -89,12 +172,38 @@ void loadMnistLabels(float*& labels, int& numLabels, int digit) {
   }
 }
 
-void loadMnist(float**& images, float*& labels, int& numExamples, int digit) {
+void loadMnist(
+    float**& images,
+    float*& labels,
+    int& numExamples,
+    int digit,
+    std::string prefix,
+    float *map
+) {
   int numImages, numLabels;
 
-  loadMnistImages(images, numImages);
-  loadMnistLabels(labels, numLabels, digit);
+  loadMnistImages(images, numImages, prefix, map);
+  loadMnistLabels(labels, numLabels, digit, prefix);
 
   if (numImages == numLabels) numExamples = numImages;
   else                        numExamples = -1;
+}
+
+void loadMnist(
+    float**& images,
+    float*& labels,
+    int& numExamples,
+    int digit,
+    std::string prefix
+) {
+  loadMnist(images, labels, numExamples, digit, prefix, 0);
+}
+
+void loadMnist(
+    float**& images,
+    float*& labels,
+    int& numExamples,
+    int digit
+) {
+  loadMnist(images, labels, numExamples, digit, "train");
 }

@@ -1,9 +1,5 @@
-Measure classification error now that benchmarking is done after weight updates and before regularisation
-
-Improve vanishing gradient cirumvention by averaging real gradients *then* normalising their magnitudes
-
-Investigate effect of momentum
-
-Combine regularisation and weight update steps
-
-Don't clip weights. Normalising the contrast has the same effect
+1. Re-order the components of each image vector using the quad tree thing.
+2. Normalise units using the exponential moving average of their minimum and maximum activations in each batch. You must also change the way bins are computed so that they remain in bounds.
+3. Why do you need to clip the weights before normalising to get good results?
+   - It was found not to be necessary in a dim 4, res 20 net though clipped weights get better accuracies, perhaps by taking energy out of the system. (Imagine the weights as bumping into walls at 0 and 1.)
+4. Investigate how applying momentum only to the data-fitting part of the objective improves accuracy.

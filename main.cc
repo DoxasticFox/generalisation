@@ -1,13 +1,13 @@
-#include <iostream>
-#include <fstream>
-#include <iomanip>
-#include <climits>
-#include <random>
-#include <vector>
-#include "math.h"
 #include "float.h"
+#include "math.h"
 #include "mnist.h"
 #include "more-math.h"
+#include <climits>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
+#include <random>
+#include <vector>
 
 struct ExampleGrads { float xlyl; float xuyl; float xlyu; float xuyu; };
 struct WGrads       { float xlyl; float xuyl; float xlyu; float xuyu; };
@@ -638,9 +638,10 @@ void sgd(
     net.params[i] -= net.momentum[i];
 
   //// Retard momentum
-  for (int i = 0; i < net.numUnits * net.res * net.res; i++)
-    if (net.params[i] < 0.0 || net.params[i] > 1.0)
-      net.momentum[i] = 0.0;
+  // TODO: Undo
+  //for (int i = 0; i < net.numUnits * net.res * net.res; i++)
+    //if (net.params[i] < 0.0 || net.params[i] > 1.0)
+      //net.momentum[i] = 0.0;
 
   // Clamp params
   for (int i = 0; i < net.numUnits * net.res * net.res; i++)
@@ -740,31 +741,41 @@ void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
 int main() {
   // MODEL VARS
   int   dim = 1024;
-  int   res = 5;
+  int   res = 10;
   float reg = 0.001;
   Net net = makeNet(dim, res, reg);
 
-  // LOAD MNIST
+  // MAKE INPUT RE-ORDERING MAP
+  float *map = makeQuasiConvMap(dim);
+
+  // LOAD MNIST TRAINING SET
   int     digit = 0;
-  int     numExamples;
-  float** inputs;
-  float*  outputs;
-  loadMnist(inputs, outputs, numExamples, digit);
+  int     numExamplesTrn;
+  float** inputsTrn;
+  float*  outputsTrn;
+  loadMnist(inputsTrn, outputsTrn, numExamplesTrn, digit, "train", map);
+
+  // LOAD MNIST TESTING SET
+  int     numExamplesTst;
+  float** inputsTst;
+  float*  outputsTst;
+  loadMnist(inputsTst, outputsTst, numExamplesTst, digit, "t10k", map);
 
   // OPTIMISER VARS
   float rate      = 1.0;
   float momentum  = 0.0;
-  int   batchSize = 1000;
+  int   batchSize = 100;
 
   // OPTIMISE
-  for (int j = 0; j < 10000; j++) {
-    for (int i = 0; i < 1760; i++) {
-      sgd(net, inputs, outputs, numExamples, batchSize, rate, momentum);
-    }
+  for (int i = 0; i < 10000; i++) {
+    for (int j = 0; j < 1760; j++)
+      sgd(net, inputsTrn, outputsTrn, numExamplesTrn, batchSize, rate, momentum);
 
-    forward(net, inputs[0]);
-    std::cout << *net.output << std::endl;
-    std::cout << "%" << classificationError(net, inputs, outputs, numExamples) * 100 << std::endl;
-    printParams(j, net);
+    float e;
+    e = classificationError(net, inputsTst, outputsTst, numExamplesTst, numExamplesTst);
+    e *= 100;
+    std::cout << "error (%): " << e << std::endl;
+
+    printParams(i, net);
   }
 }

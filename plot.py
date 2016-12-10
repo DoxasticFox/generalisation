@@ -1,12 +1,9 @@
-import math
-import numpy as np
 import itertools
 import scipy.misc
 import scipy.ndimage.filters
 import scipy.special
-import random
-import copy
-import pickle
+import glob
+import re
 
 def plot(net, fileNum):
     nG = len(net[0][0])     # Plot width
@@ -67,7 +64,26 @@ def evalUnit(unit, x, y):
             unit[xbu][ybu] * xdl * ydl   \
     )
 
+def latestPngIndex():
+    pngs = glob.glob('plots/*.png')
+    if not pngs:
+        return -1
+
+    pngs.sort()
+    latestFilename = pngs[-1]
+
+    m = re.search('(\d+)\.', latestFilename)
+    latestIndex = int(m.group(1))
+
+    return latestIndex
+
 ################################################################################
-for i in range(0, 10000):
+
+i = latestPngIndex() + 1
+
+while True:
     execfile('plots/net-%09d.net' % i)
+    print 'Plotting %s...' % i
     plot(net, i)
+
+    i += 1
