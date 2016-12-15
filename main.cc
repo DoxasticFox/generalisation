@@ -240,14 +240,18 @@ void initUnit(Net& net, int l, int i) {
   bool a1 = rand() % 2 == 0;
   bool a2 = !a1;
 
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+
   float *unit = getUnit(net, l, i);
   for (int x = 0; x < net.res; x++) {
     for (int y = 0; y < net.res; y++) {
       float fx = x/(net.res - 1.0);
       float fy = y/(net.res - 1.0);
 
-      if (a1) unit[I_unit(net, x, y)] = abs1(fx, fy);
-      if (a2) unit[I_unit(net, x, y)] = abs2(fx, fy);
+      //if (a1) unit[I_unit(net, x, y)] = abs1(fx, fy);
+      //if (a2) unit[I_unit(net, x, y)] = abs2(fx, fy);
+
+      unit[I_unit(net, x, y)] = distribution(generator);
     }
   }
 }
@@ -741,15 +745,16 @@ void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
 int main() {
   // MODEL VARS
   int   dim = 1024;
-  int   res = 10;
-  float reg = 0.001;
+  int   res = 20;
+  float reg = 0.01;
   Net net = makeNet(dim, res, reg);
 
   // MAKE INPUT RE-ORDERING MAP
+  //float *map = 0;
   float *map = makeQuasiConvMap(dim);
 
   // LOAD MNIST TRAINING SET
-  int     digit = 0;
+  int     digit = 9;
   int     numExamplesTrn;
   float** inputsTrn;
   float*  outputsTrn;
@@ -764,17 +769,32 @@ int main() {
   // OPTIMISER VARS
   float rate      = 1.0;
   float momentum  = 0.0;
-  int   batchSize = 100;
+  int   batchSize = 1000;
 
   // OPTIMISE
   for (int i = 0; i < 10000; i++) {
-    for (int j = 0; j < 1760; j++)
+    for (int j = 0; j < 5000; j++)
       sgd(net, inputsTrn, outputsTrn, numExamplesTrn, batchSize, rate, momentum);
+
+    net.reg *= 0.99;
+    //if (i ==   8) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i ==  16) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i ==  32) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i ==  64) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i == 128) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i == 256) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+    //if (i == 512) { net.reg /= 2.0; std::cout << "net.reg: " << net.reg << std::endl; }
+
 
     float e;
     e = classificationError(net, inputsTst, outputsTst, numExamplesTst, numExamplesTst);
     e *= 100;
-    std::cout << "error (%): " << e << std::endl;
+    std::cout << "Test error (%):  " << e << std::endl;
+
+    e = classificationError(net, inputsTrn, outputsTrn, numExamplesTrn, numExamplesTrn);
+    e *= 100;
+    std::cout << "Train error (%): " << e << std::endl;
+    std::cout << std::endl;
 
     printParams(i, net);
   }

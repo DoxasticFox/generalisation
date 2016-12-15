@@ -6,12 +6,12 @@ import glob
 import re
 
 def plot(net, fileNum):
-    nG = len(net[0][0])     # Plot width
-    nI = len(net[0]   )     # Input size / 2
+    nG = len(net[0][0])     # Number of pixels per unit
+    nU = len(net[0]   )     # Number of units in first layer
     nL = len(net      )     # num layers
 
-    pI = nI * nG + nI
-    pJ = nL * nG + nL
+    pI = nU * (nG + 1) - 1
+    pJ = nL * (nG + 1) - 1
     im = [[0.0 for i in range(pI)] for j in range(pJ)]
     for i, layer in enumerate(net):
         for j, unit in enumerate(layer):
@@ -19,7 +19,7 @@ def plot(net, fileNum):
                 for l in range(nG):
                     K = k / float(nG - 1)
                     L = l / float(nG - 1)
-                    im[k + i*nG + i][l + j*nG + j] = evalUnit(unit, K, L)
+                    im[-(k + i*nG + i + 1)][l + j*nG + j] = evalUnit(unit, K, L)
 
     # Save to files
     im = scipy.misc.toimage(im, cmin=0.0, cmax=1.0)

@@ -112,7 +112,7 @@ void loadMnistImages(
   images = new float*[numImages];
   for (int i = 0; i < numImages; i++) {
     int size = pow(2, ceil(log2(numRows*numCols)));
-    images[i] = new float[size];
+    images[i] = new float[size*2];
   }
 
   // Load data
@@ -121,19 +121,22 @@ void loadMnistImages(
       unsigned char pixel = 0;
       file.read((char*) &pixel, 1);
 
-      images[i][j] = (float) pixel;
+      images[i][j     ] = (float) pixel;
+      images[i][j+1024] = (float) pixel;
     }
   }
 
   // Normalise data
   for (int i = 0; i < numImages; i++)
-    for (int j = 0; j < numRows*numCols; j++)
+    for (int j = 0; j < 2048; j++)
       images[i][j] /= 255.0;
 
   // Reorder data
   if (map)
-    for (int i = 0; i < numImages; i++)
-      reorderVector(images[i], map, numRows*numCols);
+    for (int i = 0; i < numImages; i++) {
+      reorderVector( images[i],       map, numRows*numCols);
+      reorderVector(&images[i][1024], map, numRows*numCols);
+    }
 
 }
 
