@@ -2,6 +2,12 @@
 #include <math.h>
 #include "math.h"
 
+float sgn(float x) {
+  if (x > 0) return +1.0;
+  if (x < 0) return -1.0;
+  return 0.0;
+}
+
 float clamp(float x, float min, float max) {
   if (x < min) return min;
   if (x > max) return max;

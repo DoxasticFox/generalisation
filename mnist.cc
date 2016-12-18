@@ -27,7 +27,7 @@ float* makeRandomMap(int n) {
 void makeQuasiConvMapRec(int x, int y, int lenx, int leny, float* map, int &i) {
   if (lenx == 0 || leny == 0) return;
   if (lenx == 1 && leny == 1) {
-    map[i] = x + 28 * y;
+    map[i] = 28 * x + y;
     i++;
     return;
   }

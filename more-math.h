@@ -1,6 +1,7 @@
 #ifndef MATH_H
 #define MATH_H
 
+float sgn(float x);
 float clamp(float x, float min, float max);
 float max(float x, float y);
 float min(float x, float y);
