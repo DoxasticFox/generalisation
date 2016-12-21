@@ -1,6 +1,4 @@
-#include <float.h>
-#include <math.h>
-#include "math.h"
+#include "more-math.h"
 
 float sgn(float x) {
   if (x > 0) return +1.0;
@@ -8,10 +6,38 @@ float sgn(float x) {
   return 0.0;
 }
 
+int clamp(int x, int min, int max) {
+  if (x < min) return min;
+  if (x > max) return max;
+               return x;
+}
+
 float clamp(float x, float min, float max) {
   if (x < min) return min;
   if (x > max) return max;
                return x;
+}
+
+void maskedMoments(float *x, float *mask, int n, float &avg, float &std) {
+  float avg_ = 0.0;
+  float std_ = 0.0;
+
+  // Compute average
+  for (int i = 0; i < n; i++)
+    if (mask[i])
+      avg_ += x[i] / n;
+
+  // Compute standard deviation
+  for (int i = 0; i < n; i++) {
+    if (mask[i]) {
+      float d = (avg_ - x[i]);
+      std_ += d * d / n;
+    }
+  }
+  std_ = sqrt(std_);
+
+  avg = avg_;
+  std = std_;
 }
 
 float max(float x, float y) {
@@ -24,6 +50,30 @@ float min(float x, float y) {
   else       return y;
 }
 
+float maskedAvg(float *x, bool *mask, int n) {
+  float avg = 0.0;
+  for (int i = 0; i < n; i++)
+    if (mask[i])
+      avg += x[i] / n;
+  return avg;
+}
+
+float maskedMin(float *x, bool *mask, int n) {
+  float best = FLT_MAX;
+  for (int i = 0; i < n; i++)
+    if (mask[i])
+      if (x[i] < best) best = x[i];
+  return best;
+}
+
+float maskedMax(float *x, bool *mask, int n) {
+  float best = - FLT_MIN;
+  for (int i = 0; i < n; i++)
+    if (mask[i])
+      if (x[i] > best) best = x[i];
+  return best;
+}
+
 float min(float *x, int n) {
   float best = FLT_MAX;
   for (int i = 0; i < n; i++)
@@ -32,18 +82,18 @@ float min(float *x, int n) {
 }
 
 float max(float *x, int n) {
-  float best = FLT_MIN;
+  float best = - FLT_MIN;
   for (int i = 0; i < n; i++)
     if (x[i] > best) best = x[i];
   return best;
 }
 
-void sub(float *x, int n, float c) {
-  for (int i = 0; i < n; i++) x[i] -= c;
+void add(float *x, int n, float c) {
+  for (int i = 0; i < n; i++) x[i] += c;
 }
 
-void div(float *x, int n, float c) {
-  for (int i = 0; i < n; i++) x[i] /= c;
+void mul(float *x, int n, float c) {
+  for (int i = 0; i < n; i++) x[i] *= c;
 }
 
 float mean(float* x, int n) {

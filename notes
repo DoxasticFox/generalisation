@@ -1,3 +1,5 @@
+dim = 256*256, 5000 forward passes
+
 C++
   17.64 seconds / 5000 =   3.528 milliseconds
    9.25 seconds / 5000 =   1.85  milliseconds
