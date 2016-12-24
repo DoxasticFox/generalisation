@@ -7,12 +7,14 @@
 float sgn(float x);
 int clamp(int x, int min, int max);
 float clamp(float x, float min, float max);
-void maskedMoments(float *x, float *mask, int n, float &avg, float &std);
-float max(float x, float y);
-float min(float x, float y);
+int count(bool *x, int n);
+void maskedMoments(float *x, bool *mask, int n, float &avg, float &var);
 float maskedAvg(float *x, bool *mask, int n);
 float maskedMin(float *x, bool *mask, int n);
 float maskedMax(float *x, bool *mask, int n);
+void moments(float *x, int n, float &avg, float &var);
+float max(float x, float y);
+float min(float x, float y);
 float max(float *x, int n);
 float min(float *x, int n);
 void add(float *x, int n, float c);

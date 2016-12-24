@@ -1,4 +1,4 @@
-dim = 256*256, 5000 forward passes
+dim = 256*256, 5000 forward passes, resolution??
 
 C++
   17.64 seconds / 5000 =   3.528 milliseconds

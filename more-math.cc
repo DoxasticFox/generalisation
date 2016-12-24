@@ -18,43 +18,41 @@ float clamp(float x, float min, float max) {
                return x;
 }
 
-void maskedMoments(float *x, float *mask, int n, float &avg, float &std) {
+int count(bool *x, int n) {
+  int c = 0;
+  for (int i = 0; i < n; i++)
+    if (x[i]) c++;
+  return c;
+}
+
+void maskedMoments(float *x, bool *mask, int n, float &avg, float &var) {
   float avg_ = 0.0;
-  float std_ = 0.0;
+  float var_ = 0.0;
+  float cnt_ = count(mask, n);
 
   // Compute average
   for (int i = 0; i < n; i++)
     if (mask[i])
-      avg_ += x[i] / n;
+      avg_ += x[i] / cnt_;
 
-  // Compute standard deviation
+  // Compute variance
   for (int i = 0; i < n; i++) {
     if (mask[i]) {
       float d = (avg_ - x[i]);
-      std_ += d * d / n;
+      var_ += d * d / cnt_;
     }
   }
-  std_ = sqrt(std_);
 
   avg = avg_;
-  std = std_;
-}
-
-float max(float x, float y) {
-  if (x > y) return x;
-  else       return y;
-}
-
-float min(float x, float y) {
-  if (x < y) return x;
-  else       return y;
+  var = var_;
 }
 
 float maskedAvg(float *x, bool *mask, int n) {
+  float cnt = count(mask, n);
   float avg = 0.0;
   for (int i = 0; i < n; i++)
     if (mask[i])
-      avg += x[i] / n;
+      avg += x[i] / cnt;
   return avg;
 }
 
@@ -74,17 +72,45 @@ float maskedMax(float *x, bool *mask, int n) {
   return best;
 }
 
-float min(float *x, int n) {
-  float best = FLT_MAX;
+void moments(float *x, int n, float &avg, float &var) {
+  float avg_ = 0.0;
+  float var_ = 0.0;
+
+  // Compute average
   for (int i = 0; i < n; i++)
-    if (x[i] < best) best = x[i];
-  return best;
+    avg_ += x[i] / n;
+
+  // Compute variance
+  for (int i = 0; i < n; i++) {
+    float d = (avg_ - x[i]);
+    var_ += d * d / n;
+  }
+
+  avg = avg_;
+  var = var_;
+}
+
+float max(float x, float y) {
+  if (x > y) return x;
+  else       return y;
+}
+
+float min(float x, float y) {
+  if (x < y) return x;
+  else       return y;
 }
 
 float max(float *x, int n) {
   float best = - FLT_MIN;
   for (int i = 0; i < n; i++)
     if (x[i] > best) best = x[i];
+  return best;
+}
+
+float min(float *x, int n) {
+  float best = FLT_MAX;
+  for (int i = 0; i < n; i++)
+    if (x[i] < best) best = x[i];
   return best;
 }
 
@@ -103,15 +129,14 @@ float mean(float* x, int n) {
   return m;
 }
 
-// Is this the standard deviation, or variance?
 float var(float* x, int n) {
   float m = mean(x, n);
-  float std = 0.0;
+  float var = 0.0;
   for (int i = 0; i < n; i++) {
     float d = x[i] - m;
-    std += d * d / n;
+    var += d * d / n;
   }
-  return std;
+  return var;
 }
 
 void hadamard(float* x, float* y, int n) {
