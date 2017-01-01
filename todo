@@ -4,3 +4,4 @@
    - It was found not to be necessary in a dim 4, res 20 net though clipped weights get better accuracies, perhaps by taking energy out of the system. (Imagine the weights as bumping into walls at 0 and 1.)
 4. Investigate how applying momentum only to the data-fitting part of the objective improves accuracy.
 5. On the 4-dim parity problem, gradually reducing the regularisation to zero gives a zero error rate.
+6. See if the __restrict__/restrict keyword makes a difference
