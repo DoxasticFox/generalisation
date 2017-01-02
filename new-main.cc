@@ -54,6 +54,246 @@ struct Net {
 
 std::default_random_engine generator;
 
+/***************************** COUNTING FUNCTIONS *****************************/
+
+int lenLayer(Net& net, int l) {
+  return pow(2, net.depth - l - 1);
+}
+
+// Number of units above the layer indexed by `l`
+int numUnitsAbove(Net& net, int l) {
+  return net.dim - pow(2, net.depth - l);
+}
+
+// Number of units before the unit at layer `l`, index `i`
+int numUnitsAbove(Net& net, int l, int i) {
+  return numUnitsAbove(net, l) + i;
+}
+
+/***************************** INDEXING FUNCTIONS *****************************/
+
+int I(Net& net, int l, int i) {
+  return numUnitsAbove(net, l, i);
+}
+
+int I(Net& net, int l) {
+  return I(net, l, 0);
+}
+
+// Indexes the elements (pixels) in a unit
+int I_unit(Net& net, int x, int y) {
+  return net.res * x + y;
+}
+
+int I_params(Net& net, int l, int i, int x, int y) {
+  return (net.unitSize) * I(net, l, i) + I_unit(net, x, y);
+}
+
+int I_params(Net& net, int l, int i) {
+  return I_params(net, l, i, 0, 0);
+}
+
+int I_params(Net& net, int l) {
+  return I_params(net, l, 0);
+}
+
+/********************************** GETTERS ***********************************/
+
+float* getUnit(Net& net, int l, int i) {
+  return &net.params[I_params(net, l, i)];
+}
+
+float* getUnit(Net& net, int l) {
+  return getUnit(net, l, 0);
+}
+
+float getParam(Net& net, int l, int i, int x, int y) {
+  return net.params[I_params(net, l, i, x, y)];
+}
+
+float* getActs(Net& net, int l, int i) {
+  if (l < 0) return &net.input[I(net, 0, i)];
+  else       return &net.acts [I(net, l, i)];
+}
+
+float* getActs(Net& net, int l) {
+  return getActs(net, l, 0);
+}
+
+CPtLocs* getCPtLocs(Net& net, int l, int i) {
+  return &net.cPtLocs[I(net, l, i)];
+}
+
+CPtLocs* getCPtLocs(Net& net, int l) {
+  return getCPtLocs(net, l, 0);
+}
+
+CPtVals* getCPtVals(Net& net, int l, int i) {
+  return &net.cPtVals[I(net, l, i)];
+}
+
+CPtVals* getCPtVals(Net& net, int l) {
+  return getCPtVals(net, l, 0);
+}
+
+CPtDists* getCPtDists(Net& net, int l, int i) {
+  return &net.cPtDists[I(net, l, i)];
+}
+
+CPtDists* getCPtDists(Net& net, int l) {
+  return getCPtDists(net, l, 0);
+}
+
+float* getXGrads(Net& net, int l, int i) {
+  return &net.xGrads[I(net, l, i)];
+}
+
+float* getXGrads(Net& net, int l) {
+  return &net.xGrads[I(net, l, 0)];
+}
+
+float* getYGrads(Net& net, int l, int i) {
+  return &net.yGrads[I(net, l, i)];
+}
+
+float* getYGrads(Net& net, int l) {
+  return &net.yGrads[I(net, l, 0)];
+}
+
+float* getBackGrads(Net& net, int l, int i) {
+  return &net.backGrads[I(net, l, i)];
+}
+
+float* getBackGrads(Net& net, int l) {
+  return &net.backGrads[I(net, l, 0)];
+}
+
+/********************************** PRINTING **********************************/
+
+void printParams(std::ofstream& file, Net& net, int l, int i, int x) {
+  file << "      [";
+  for (int y = 0; y < net.res; y++) {
+    int precision = std::numeric_limits<float>::max_digits10;
+    float param = getParam(net, l, i, x, y);
+
+    file << std::setprecision(precision) << param << ", ";
+  }
+  file << "]";
+}
+
+void printParams(std::ofstream& file, Net& net, int l, int i) {
+  file << "    [" << std::endl;
+  for (int x = 0; x < net.res; x++) {
+    printParams(file, net, l, i, x);
+    file << "," << std::endl;
+  }
+  file << "    ]";
+}
+
+void printParams(std::ofstream& file, Net& net, int l) {
+  file << "  [" << std::endl;
+  for (int i = 0; i < lenLayer(net, l); i++) {
+    printParams(file, net, l, i);
+    file << "," << std::endl;
+  }
+  file << "  ]";
+}
+
+void printParams(std::string filename, Net& net) {
+  std::ofstream file;
+  file.open(filename);
+
+  file << "net = ";
+  file << "[" << std::endl;
+  for (int i = 0; i < net.depth; i++) {
+    printParams(file, net, i);
+    file << "," << std::endl;
+  }
+  file << "]";
+
+  file.close();
+}
+
+void printParams(int i, Net& net) {
+  // Convert index `i` into file filename
+  char filename[100];
+  snprintf(filename, sizeof(filename), "plots/net-%09d.net", i);
+  std::string filenameAsStdStr = filename;
+
+  printParams(filenameAsStdStr, net);
+}
+
+/*************************** NETWORK INITIALISATION ***************************/
+
+void allocNet(Net& net) {
+  // Model
+  net.params = new float[net.numUnits*net.unitSize];
+
+  net.cPtLocs  = new CPtLocs [net.batchSize*net.numUnits];
+  net.cPtVals  = new CPtVals [net.batchSize*net.numUnits];
+  net.cPtDists = new CPtDists[net.batchSize*net.numUnits];
+  net.acts     = new float   [net.batchSize*net.numUnits];
+
+  // Optimiser
+  net.batchGrads   = new float       [net.batchSize*net.numUnits*net.unitSize];
+  net.exampleGrads = new ExampleGrads[net.batchSize*net.numUnits];
+  net.regGrads     = new float       [              net.numUnits*net.unitSize];
+  net.xRegGrads    = new float       [              net.numUnits*net.unitSize];
+  net.xGrads       = new float       [net.batchSize*net.numUnits];
+  net.yGrads       = new float       [net.batchSize*net.numUnits];
+  net.wGrads       = new WGrads      [net.batchSize*net.numUnits];
+  net.backGrads    = new float       [net.batchSize*net.numUnits];
+  net.step         = new float       [net.batchSize*net.numUnits*net.unitSize];
+}
+
+void initUnit(Net& net, int l, int i) {
+  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+
+  float *unit = getUnit(net, l, i);
+  for (int x = 0; x < net.res; x++)
+    for (int y = 0; y < net.res; y++)
+      unit[I_unit(net, x, y)] = distribution(generator);
+}
+
+void initNet(Net& net) {
+  for (int i = 0; i < net.depth; i++)
+    for (int j = 0; j < lenLayer(net, i); j++)
+      initUnit(net, i, j);
+}
+
+Net makeNet(
+    int dim, int res, float reg,
+    float **inputs, float *outputs, int numExamples,
+    float rate, float momentum, int batchSize
+) {
+  Net net;
+
+  // Model variables
+  net.depth    = ceil(log2(dim));
+  net.dim      = pow(2, net.depth);
+  net.res      = res;
+  net.reg      = reg;
+  net.numUnits = net.dim - 1;
+  net.unitSize = res * res;
+
+  // Optimisation variables
+  net.inputs      = inputs;
+  net.outputs     = outputs;
+  net.numExamples = numExamples;
+  net.rate        = rate;
+  net.momentum    = momentum;
+  net.batchSize   = batchSize;
+  net.batchIndex  = numExamples/batchSize; // Past last batch. Triggers shuffle
+
+  // Allocation
+  allocNet(net);
+  initNet (net);
+
+  net.output = getActs(net, net.depth - 1);
+
+  return net;
+}
+
 /******************** INPUT EVALUATION (FEED-FORWARD PASS) ********************/
 
 void binPair(
@@ -123,8 +363,8 @@ void computeCPtDists(Net& net, int l) {
       distPairs(
           net,
           acts[(2*i+0)*J + j], acts[(2*i+1)*J + j],
-          cPtLocs [i].xbl, cPtLocs [i].xbu, cPtLocs [i].ybl, cPtLocs [i].ybu,
-          cPtDists[i].xdl, cPtDists[i].xdu, cPtDists[i].ydl, cPtDists[i].ydu
+          cPtLocs [i*J+j].xbl, cPtLocs [i*J+j].xbu, cPtLocs [i*J+j].ybl, cPtLocs [i*J+j].ybu,
+          cPtDists[i*J+j].xdl, cPtDists[i*J+j].xdu, cPtDists[i*J+j].ydl, cPtDists[i*J+j].ydu
       );
     }
   }
@@ -136,15 +376,17 @@ void computeCPtVals(Net& net, int l) {
   float   *unit     = getUnit   (net, l);
 
   for (int i(0), I(lenLayer(net, l)); i < I; i++) {
-    int xbl = cPtLocs[i].xbl;
-    int xbu = cPtLocs[i].xbu;
-    int ybl = cPtLocs[i].ybl;
-    int ybu = cPtLocs[i].ybu;
+    for (int j(0), J(net.batchSize); j < J; j++) {
+      int xbl = cPtLocs[i*J+j].xbl;
+      int xbu = cPtLocs[i*J+j].xbu;
+      int ybl = cPtLocs[i*J+j].ybl;
+      int ybu = cPtLocs[i*J+j].ybu;
 
-    cPtVals[i].xlyl = unit[I_unit(net, xbl, ybl)];
-    cPtVals[i].xuyl = unit[I_unit(net, xbu, ybl)];
-    cPtVals[i].xlyu = unit[I_unit(net, xbl, ybu)];
-    cPtVals[i].xuyu = unit[I_unit(net, xbu, ybu)];
+      cPtVals[i*J+j].xlyl = unit[I_unit(net, xbl, ybl)];
+      cPtVals[i*J+j].xuyl = unit[I_unit(net, xbu, ybl)];
+      cPtVals[i*J+j].xlyu = unit[I_unit(net, xbl, ybu)];
+      cPtVals[i*J+j].xuyu = unit[I_unit(net, xbu, ybu)];
+    }
 
     unit += net.unitSize;
   }
@@ -156,7 +398,7 @@ void computeActs(Net& net, int l) {
   float    *acts     = getActs    (net, l);
   float    norm      = (net.res - 1) * (net.res - 1);
 
-  for (int i(0), I(lenLayer(net, l)); i < I; i++) {
+  for (int i(0), I(net.batchSize * lenLayer(net, l)); i < I; i++) {
     acts[i] = norm * (
         cPtVals[i].xlyl * cPtDists[i].xdu * cPtDists[i].ydu +
         cPtVals[i].xuyl * cPtDists[i].xdl * cPtDists[i].ydu +
@@ -173,8 +415,8 @@ void batchNorm(net, i) {
 void forward(Net& net) {
   for (int i(0), I(net.depth); i < I; i++) {
     computeCPtLocs (net, i);
-    computeCPtVals (net, i);
     computeCPtDists(net, i);
+    computeCPtVals (net, i);
     computeActs    (net, i);
     if (i < I - 1)
     batchNorm      (net, i);
