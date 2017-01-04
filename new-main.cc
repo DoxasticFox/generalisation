@@ -12,6 +12,7 @@ struct WGrads       { float xlyl; float xuyl; float xlyu; float xuyu; };
 struct CPtLocs      { int   xbl;  int   xbu;  int   ybl;  int   ybu;  };
 struct CPtVals      { float xlyl; float xuyl; float xlyu; float xuyu; };
 struct CPtDists     { float xdl;  float xdu;  float ydl;  float ydu;  };
+struct Moments      { float avg;  float var;                          };
 
 struct Net {
   int   dim; // Dimensionality of input
@@ -43,6 +44,7 @@ struct Net {
 
   float        *step;
   float         batchMse;
+  float        *stats;
   float        *dError;
   float        *batchGrads;
   float        *regGrads;
@@ -240,6 +242,7 @@ void allocNet(Net& net) {
   net.acts     = new float   [net.batchSize*net.numUnits];
 
   // Optimiser
+  net.stats        = new float       [net.numUnits];
   net.dError       = new float       [net.batchSize];
   net.batchGrads   = new float       [net.batchSize*net.numUnits*net.unitSize];
   net.exampleGrads = new ExampleGrads[net.batchSize*net.numUnits];
@@ -414,9 +417,42 @@ void computeActs(Net& net, int l) {
   }
 }
 
-// TODO: Implement me
 void batchNorm(net, i) {
-  return;
+  float  gamma = 0.25;
+  float  beta  = 0.5;
+  float  eps   = 1e-5;
+
+  float *unit;
+  float *acts;
+  int       i;
+  const int L = lenLayer(net, l);
+
+  // Compute layer stats
+  for (i = 0, acts = getActs(net, l); i < L; i++, acts += net.batchSize)
+    moments(acts, net.batchSize, stats[i].avg, stats[i].var);
+
+  // Apply Bessel's correction
+  float populationToSample = net.batchSize / ((float) net.batchSize - 1.0);
+  for (int i = 0; i < L; i++)
+    stats[i].var *= populationToSample;
+
+  // TODO: Take moving average
+
+  // Normalise activations
+  for (i = 0, acts = getActs(net, l); i < L; i++, acts += net.batchSize)
+    add(acts, net.batchSize, - stats[i].avg);
+  for (i = 0, acts = getActs(net, l); i < L; i++, acts += net.batchSize)
+    mul(acts, net.batchSize, gamma / sqrt(stats[i].std + eps));
+  for (i = 0, acts = getActs(net, l); i < L; i++, acts += net.batchSize)
+    add(acts, net.batchSize, beta);
+
+  // Normalise units
+  for (i = 0, unit = getUnit(net, l); i < L; i++, unit += net.unitSize)
+    add(unit, net.unitSize, stats[i].avg);
+  for (i = 0, unit = getUnit(net, l); i < L; i++, unit += net.unitSize)
+    mul(unit, net.unitSize, gamma / sqrt(stats[i].std + eps));
+  for (i = 0, unit = getUnit(net, l); i < L; i++, unit += net.unitSize)
+    add(unit, net.unitSize, beta);
 }
 
 void forward(Net& net) {
