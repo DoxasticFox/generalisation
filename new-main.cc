@@ -21,9 +21,6 @@ struct Net {
   int   numUnits;
   int   unitSize;
 
-  float **batchInputs;
-  float  *batchOutputs;
-
   float    *params;
   CPtLocs  *cPtLocs;
   CPtVals  *cPtVals;
@@ -33,6 +30,10 @@ struct Net {
   //Optimisation variables
   float **inputs;
   float  *outputs;
+  float  *targets;
+
+  float **batchInputs;
+  float  *batchTargets;
 
   int   numExamples;
   float rate;
@@ -42,6 +43,7 @@ struct Net {
 
   float        *step;
   float         batchMse;
+  float        *dError;
   float        *batchGrads;
   float        *regGrads;
   float        *xRegGrads;
@@ -54,6 +56,9 @@ struct Net {
 
 std::default_random_engine generator;
 
+// TODO: You need to change the model to have clamp() after each output. This
+//       includes gradients and the outputs themselves.
+// TODO: Indexing functions need revision to account for batch sizes
 /***************************** COUNTING FUNCTIONS *****************************/
 
 int lenLayer(Net& net, int l) {
@@ -235,6 +240,7 @@ void allocNet(Net& net) {
   net.acts     = new float   [net.batchSize*net.numUnits];
 
   // Optimiser
+  net.dError       = new float       [net.batchSize];
   net.batchGrads   = new float       [net.batchSize*net.numUnits*net.unitSize];
   net.exampleGrads = new ExampleGrads[net.batchSize*net.numUnits];
   net.regGrads     = new float       [              net.numUnits*net.unitSize];
@@ -263,7 +269,7 @@ void initNet(Net& net) {
 
 Net makeNet(
     int dim, int res, float reg,
-    float **inputs, float *outputs, int numExamples,
+    float **inputs, float *targets, int numExamples,
     float rate, float momentum, int batchSize
 ) {
   Net net;
@@ -278,7 +284,7 @@ Net makeNet(
 
   // Optimisation variables
   net.inputs      = inputs;
-  net.outputs     = outputs;
+  net.targets     = targets;
   net.numExamples = numExamples;
   net.rate        = rate;
   net.momentum    = momentum;
@@ -289,7 +295,7 @@ Net makeNet(
   allocNet(net);
   initNet (net);
 
-  net.output = getActs(net, net.depth - 1);
+  net.outputs = getActs(net, net.depth - 1);
 
   return net;
 }
@@ -408,6 +414,7 @@ void computeActs(Net& net, int l) {
   }
 }
 
+// TODO: Implement me
 void batchNorm(net, i) {
   return;
 }
@@ -429,6 +436,103 @@ void forward(Net& net, float** batchInputs) {
 }
 
 /**************************** GRADIENT COMPUTATION ****************************/
+
+void computeXGrads(Net& net) {
+  CPtDists *cPtDists = net.cPtDists;
+  CPtVals  *cPtVals  = net.cPtVals;
+  int       c        = (net.res - 1) * (net.res - 1);
+
+  for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
+    net.xGrads[i] = c * (
+        cPtDists[i].ydu * (cPtVals[i].xuyl - cPtVals[i].xlyl) +
+        cPtDists[i].ydl * (cPtVals[i].xuyu - cPtVals[i].xlyu)
+    );
+  }
+}
+
+void computeYGrads(Net& net) {
+  CPtDists *cPtDists = net.cPtDists;
+  CPtVals  *cPtVals  = net.cPtVals;
+  int       c        = (net.res - 1) * (net.res - 1);
+
+  for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
+    net.yGrads[i] = c * (
+        cPtDists[i].xdu * (cPtVals[i].xlyu - cPtVals[i].xlyl) +
+        cPtDists[i].xdl * (cPtVals[i].xuyu - cPtVals[i].xuyl)
+    );
+  }
+}
+
+void computeWGrads(Net& net) {
+  CPtDists *cPtDists = net.cPtDists;
+  WGrads   *wGrads   = net.wGrads;
+  float    norm      = (net.res - 1) * (net.res - 1);
+
+  for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
+    wGrads[i].xlyl = norm * cPtDists[i].xdu * cPtDists[i].ydu;
+    wGrads[i].xlyu = norm * cPtDists[i].xdu * cPtDists[i].ydl;
+    wGrads[i].xuyl = norm * cPtDists[i].xdl * cPtDists[i].ydu;
+    wGrads[i].xuyu = norm * cPtDists[i].xdl * cPtDists[i].ydl;
+  }
+}
+
+float dError(float output, float target) {
+  return output - target;
+}
+
+void computeBackGrads(Net& net) {
+  net.backGrads[net.numUnits - 1] = 1.0;
+  for (int i = net.depth - 1; i >= 1; i--) {
+    int L = lenLayer(net, i);
+
+    float *xGrads        = getXGrads   (net, i);
+    float *yGrads        = getYGrads   (net, i);
+    float *prevBackGrads = getBackGrads(net, i-1);
+    float *nextBackGrads = getBackGrads(net, i);
+
+    for (int j = L-1; j >= 0; j--) {
+      for (int k(net.batchSize - 1), K(net.batchSize - 1); k >= 0; k--) {
+        prevBackGrads[(2*j+0)*K + k] = /*sgn*/(nextBackGrads[j*K + k]) * xGrads[j*K + k];
+        prevBackGrads[(2*j+1)*K + k] = /*sgn*/(nextBackGrads[j*K + k]) * yGrads[j*K + k];
+      }
+    }
+  }
+
+  for (int i(0), I(net.batchSize); i < I; i++)
+    net.dError[i] = dError(net.output[i], target[i]);
+
+  for (int i(0), I(net.numUnits); i < I; i++)
+    for (int j(0), J(net.batchSize); j < J; j++)
+      net.backGrads[i*J+j] *= net.dError[j];
+}
+
+void computeExampleGrads(Net& net) {
+  ExampleGrads *exampleGrads = net.exampleGrads;
+  float        *backGrads    = net.backGrads;
+  WGrads       *wGrads       = net.wGrads;
+
+  for (int i(0), I(net.numUnits); i < I; i++) {
+    for (int j(0), J(net.batchSize); j < J; j++) {
+      exampleGrads[i*J+j].xlyl = backGrads[i*J+j] * wGrads[i*J+j].xlyl;
+      exampleGrads[i*J+j].xlyu = backGrads[i*J+j] * wGrads[i*J+j].xlyu;
+      exampleGrads[i*J+j].xuyl = backGrads[i*J+j] * wGrads[i*J+j].xuyl;
+      exampleGrads[i*J+j].xuyu = backGrads[i*J+j] * wGrads[i*J+j].xuyu;
+    }
+  }
+}
+
+void backward(Net& net) {
+  computeXGrads      (net);
+  computeYGrads      (net);
+  computeWGrads      (net);
+  computeBackGrads   (net);
+  computeExampleGrads(net);
+}
+
+void backward(Net& net, float* targets) {
+  net.batchTargets = targets;
+  backward(net);
+}
 
 // TODO: Profile function
 void computeRegGrads(Net& net) {
@@ -518,13 +622,43 @@ void computeRegGrads(Net& net) {
   }
 }
 
+void addExampleGrads(Net& net) {
+  int           batchSize    = net.batchSize;
+  float        *batchGrads   = net.batchGrads;
+  ExampleGrads *exampleGrads = net.exampleGrads;
+  CPtLocs      *cPtLocs      = net.cPtLocs;
+
+  for (int i(0), I(net.numUnits); i < I; i++) {
+    for (int j(0), J(net.batchSize); j < J; j++) {
+      int xbl = cPtLocs[i*J+j].xbl;
+      int xbu = cPtLocs[i*J+j].xbu;
+      int ybl = cPtLocs[i*J+j].ybl;
+      int ybu = cPtLocs[i*J+j].ybu;
+
+      batchGrads[I_unit(net, xbl, ybl)] += exampleGrads[i*J+j].xlyl / batchSize;
+      batchGrads[I_unit(net, xbu, ybl)] += exampleGrads[i*J+j].xuyl / batchSize;
+      batchGrads[I_unit(net, xbl, ybu)] += exampleGrads[i*J+j].xlyu / batchSize;
+      batchGrads[I_unit(net, xbu, ybu)] += exampleGrads[i*J+j].xuyu / batchSize;
+    }
+
+    batchGrads += net.unitSize;
+  }
+}
+
+void addExampleError(Net& net) {
+  for (int i(0) I(net.batchSize); i < I; i++) {
+    float dErr = *net.outputs[i] - net.target[i];
+    net.batchMse += dErr * dErr / I / 2.0;
+  }
+}
+
 void shuffleExamples(Net& net) {
   for (int i = 0, n(net.numExamples - 1); i < n; i++) {
     std::uniform_int_distribution<int> distribution(i, n - 1);
     int j = distribution(generator);
 
     std::swap(net.inputs [i], net.inputs [j]);
-    std::swap(net.outputs[i], net.outputs[j]);
+    std::swap(net.targets[i], net.targets[j]);
   }
 }
 
@@ -552,21 +686,9 @@ void computeBatchGrads(Net& net) {
   net.batchIndex++;
 
   forward (net, &net.inputs[i]);
-  backward(net, &net.outputs[i]);
-
-  //return;
-
-  //// Get loop bounds and increment batchIndex for the next call
-  //int i = net.batchSize * (net.batchIndex + 0);
-  //int I = net.batchSize * (net.batchIndex + 1);
-  //net.batchIndex++;
-
-  //for ( ; i < I; i++) {
-    //forward (net, net.inputs[i]);
-    //backward(net, net.outputs[i]);
-    //addExampleGrads(net);
-    //addExampleError(net, net.outputs[i]);
-  //}
+  backward(net, &net.targets[i]);
+  addExampleGrads(net);
+  addExampleError(net);
 }
 
 void sgd(Net& net) {
@@ -595,7 +717,7 @@ float classificationError(Net& net, float* input, float target) {
 float classificationError(
     Net& net,
     float** inputs,
-    float* outputs,
+    float* targets,
     int numExamples,
     int sampleSize=5000
 ) {
@@ -606,7 +728,7 @@ float classificationError(
     std::uniform_int_distribution<int> distribution(0, sampleSize-1);
     int j = distribution(generator);
 
-    sum += classificationError(net, inputs[j], outputs[j]) / sampleSize;
+    sum += classificationError(net, inputs[j], targets[j]) / sampleSize;
   }
   return sum;
 }
@@ -627,7 +749,7 @@ float trueClassifier(float *input, int dim) {
   return 0.0;
 }
 
-void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
+void makeData(float **&inputs, float *&targets, int dim, int numExamples) {
   std::uniform_real_distribution<float> distribution(0.0, 1.0);
 
   // Allocate inputs
@@ -635,17 +757,17 @@ void makeData(float **&inputs, float *&outputs, int dim, int numExamples) {
   for (int i = 0; i < numExamples; i++)
     inputs[i] = new float[dim];
 
-  // Allocate outputs
-  outputs = new float[numExamples];
+  // Allocate targets
+  targets = new float[numExamples];
 
   // Init inputs
   for (int i = 0; i < numExamples; i++)
     for(int j = 0; j < dim; j++)
       inputs[i][j] = distribution(generator);
 
-  // Init outputs
+  // Init targets
   for (int i = 0; i < numExamples; i++)
-    outputs[i] = trueClassifier(inputs[i], dim);
+    targets[i] = trueClassifier(inputs[i], dim);
 }
 
 /************************************ MAIN ************************************/
@@ -664,14 +786,14 @@ int main() {
   // LOAD SYNTHETIC DATA SET
   int     numExamplesTrn = 100000;
   float** inputsTrn;
-  float*  outputsTrn;
+  float*  targetsTrn;
 
-  makeData(inputsTrn, outputsTrn, dim, numExamplesTrn);
+  makeData(inputsTrn, targetsTrn, dim, numExamplesTrn);
 
   // Make model
   Net net = makeNet(
       dim, res, reg,
-      inputsTrn, outputsTrn, numExamplesTrn,
+      inputsTrn, targetsTrn, numExamplesTrn,
       rate, momentum, batchSize
   );
 
@@ -682,7 +804,7 @@ int main() {
     net.reg *= 0.9;
 
     float e;
-    e = classificationError(net, inputsTrn, outputsTrn, 10000, 10000);
+    e = classificationError(net, inputsTrn, targetsTrn, 10000, 10000);
     e *= 100;
     std::cout << "Train error (%): " << e << std::endl;
 
