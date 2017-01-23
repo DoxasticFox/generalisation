@@ -245,7 +245,7 @@ void allocNet(Net& net) {
   // Optimiser
   net.stats        = new Moments     [net.numUnits];
   net.dError       = new float       [net.batchSize];
-  net.batchGrads   = new float       [net.batchSize*net.numUnits*net.unitSize];
+  net.batchGrads   = new float       [              net.numUnits*net.unitSize];
   net.exampleGrads = new ExampleGrads[net.batchSize*net.numUnits];
   net.regGrads     = new float       [              net.numUnits*net.unitSize];
   net.xRegGrads    = new float       [              net.numUnits*net.unitSize];
@@ -268,7 +268,7 @@ void initUnit(Net& net, int l, int i) {
       else                      unit[I_unit(net, x, y)] = 1.0;
 
       unit[I_unit(net, x, y)] = distribution(generator);
-      unit[I_unit(net, x, y)] = (fx + fy) / 2.0;
+      //unit[I_unit(net, x, y)] = (fx + fy) / 2.0;
     }
 }
 
@@ -468,6 +468,7 @@ void computeActs(Net& net, int l) {
         cPtVals[i].xuyu * cPtDists[i].xdl * cPtDists[i].ydl
     );
   }
+  // TODO: Clamp is in the wrong place
   for (int i(0), I(net.batchSize * lenLayer(net, l)); i < I; i++)
     acts[i] = clamp(acts[i], 0.0, 1.0);
 }
@@ -547,7 +548,7 @@ void forward(Net& net, float* input) {
 void computeXGrads(Net& net) {
   CPtDists *cPtDists = net.cPtDists;
   CPtVals  *cPtVals  = net.cPtVals;
-  int       c        = (net.res - 1) * (net.res - 1);
+  float     c        = (net.res - 1.0) * (net.res - 1.0);
 
   for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
     net.xGrads[i] = c * (
@@ -565,7 +566,7 @@ void computeXGrads(Net& net) {
 void computeYGrads(Net& net) {
   CPtDists *cPtDists = net.cPtDists;
   CPtVals  *cPtVals  = net.cPtVals;
-  int       c        = (net.res - 1) * (net.res - 1);
+  float     c        = (net.res - 1.0) * (net.res - 1.0);
 
   for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
     net.yGrads[i] = c * (
@@ -831,7 +832,7 @@ void computeBatchGradsNumerically(Net& net) {
   forward(net, &net.inputs[i], true);
 
   for (int j(0), J(net.unitSize * net.numUnits); j < J; j++) {
-    float h = 1e-3;
+    float h = 1e-5;
     float objSub;
     float objAdd;
 
@@ -848,7 +849,7 @@ void checkGradients(Net& net) {
   computeBatchGrads(net);
 
   // Copy `net.batchGrads`
-  int sizeOfBatchGrads = net.batchSize*net.numUnits*net.unitSize;
+  int sizeOfBatchGrads = net.numUnits*net.unitSize;
   float *batchGrads = new float[sizeOfBatchGrads];
   for (int i = 0; i < sizeOfBatchGrads; i++)
     batchGrads[i] = net.batchGrads[i];
@@ -859,6 +860,7 @@ void checkGradients(Net& net) {
   computeBatchGradsNumerically(net);
 
   // Compare gradients
+  // TODO: Display unit index
   float threshold = 1e-2;
   for (int i = 0; i < sizeOfBatchGrads; i++) {
     float diff = net.batchGrads[i] - batchGrads[i];
@@ -871,8 +873,8 @@ void checkGradients(Net& net) {
         << sizeOfBatchGrads
         << " in batch "
         << net.batchIndex - 1
-        << " exceeds threshold by "
-        << adiff - threshold
+        << " differs from numerical gradient by "
+        << adiff
         << ". Wanted: "
         << net.batchGrads[i]
         << ". Got: "
@@ -969,14 +971,14 @@ void makeData(float **&inputs, float *&targets, int dim, int numExamples) {
 
 int main() {
   // MODEL VARS
-  int   dim = 128;
+  int   dim = 4;
   int   res = 10;
   float reg = 0.1;
 
   // OPTIMISER VARS
   float rate      = 0.1;
   float momentum  = 0.0;
-  int   batchSize = 100;
+  int   batchSize = 1;
 
   // LOAD SYNTHETIC DATA SET
   int     numExamplesTrn = 100000;
@@ -992,6 +994,7 @@ int main() {
       rate, momentum, batchSize
   );
 
+  for (int i = 0; i < 1000; i++)
   checkGradients(net);
   return 0;
 
