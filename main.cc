@@ -7,58 +7,64 @@
 #include <random>
 #include <algorithm>
 
-struct ExampleGrads { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct WGrads       { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct CPtLocs      { int   xbl;  int   xbu;  int   ybl;  int   ybu;  };
-struct CPtVals      { float xlyl; float xuyl; float xlyu; float xuyu; };
-struct CPtDists     { float xdl;  float xdu;  float ydl;  float ydu;  };
-struct Moments      { float avg;  float var;                          };
+struct ExampleGrads { double xlyl; double xuyl; double xlyu; double xuyu; };
+struct WGrads       { double xlyl; double xuyl; double xlyu; double xuyu; };
+struct CPtLocs      { int    xbl;  int    xbu;  int    ybl;  int    ybu;  };
+struct CPtVals      { double xlyl; double xuyl; double xlyu; double xuyu; };
+struct CPtDists     { double xdl;  double xdu;  double ydl;  double ydu;  };
+struct Moments      { double avg;  double var;                            };
 
 struct Net {
   int   dim; // Dimensionality of input
   int   res;
-  float reg;
+  double reg;
   int   depth;
   int   numUnits;
   int   unitSize;
 
-  float    *params;
+  double    *params;
   CPtLocs  *cPtLocs;
   CPtVals  *cPtVals;
   CPtDists *cPtDists;
-  float    *acts;
+  double    *acts;
+
+  // Batch Norm variables
+  double   bnMomentum;
+  double   gamma;
+  double   beta;
+  Moments *stats;
 
   //Optimisation variables
-  float **inputs;
-  float  *targets;
+  double **inputs;
+  double  *targets;
 
-  float **batchInputs;
-  float  *batchOutputs;
-  float  *batchTargets;
+  double **batchInputs;
+  double  *batchOutputs;
+  double  *batchTargets;
 
   int   numExamples;
-  float rate;
-  float momentum;
+  double rate;
+  double momentum;
   int   batchSize;
   int   batchIndex;
 
-  float        *step;
-  float         batchMse;
-  Moments      *stats;
-  float        *dError;
-  float        *batchGrads;
-  float        *regGrads;
-  float        *xRegGrads;
+  double        *step;
+  double         batchMse;
+  double        *dError;
+  double        *batchGrads;
+  double        *regGrads;
+  double        *xRegGrads;
   ExampleGrads *exampleGrads;
-  float        *xGrads;
-  float        *yGrads;
+  double        *xGrads;
+  double        *yGrads;
   WGrads       *wGrads;
-  float        *backGrads;
+  double        *backGrads;
 };
 
 std::default_random_engine generator;
 
 // TODO: Improve numerical stability and re-check gradients numerically
+// TODO: Improve numerical stability of more-math functions
 /***************************** COUNTING FUNCTIONS *****************************/
 
 int lenLayer(Net& net, int l) {
@@ -104,15 +110,15 @@ int I_params(Net& net, int l) {
 
 /********************************** GETTERS ***********************************/
 
-float* getUnit(Net& net, int l, int i) {
+double* getUnit(Net& net, int l, int i) {
   return &net.params[I_params(net, l, i)];
 }
 
-float* getUnit(Net& net, int l) {
+double* getUnit(Net& net, int l) {
   return getUnit(net, l, 0);
 }
 
-float getParam(Net& net, int l, int i, int x, int y) {
+double getParam(Net& net, int l, int i, int x, int y) {
   return net.params[I_params(net, l, i, x, y)];
 }
 
@@ -120,11 +126,11 @@ Moments* getStats(Net& net, int l) {
   return &net.stats[I(net, l, 0)];
 }
 
-float* getActs(Net& net, int l, int i) {
+double* getActs(Net& net, int l, int i) {
   return &net.acts[net.batchSize*I(net, l, i)];
 }
 
-float* getActs(Net& net, int l) {
+double* getActs(Net& net, int l) {
   return getActs(net, l, 0);
 }
 
@@ -152,27 +158,27 @@ CPtDists* getCPtDists(Net& net, int l) {
   return getCPtDists(net, l, 0);
 }
 
-float* getXGrads(Net& net, int l, int i) {
+double* getXGrads(Net& net, int l, int i) {
   return &net.xGrads[net.batchSize*I(net, l, i)];
 }
 
-float* getXGrads(Net& net, int l) {
+double* getXGrads(Net& net, int l) {
   return &net.xGrads[net.batchSize*I(net, l, 0)];
 }
 
-float* getYGrads(Net& net, int l, int i) {
+double* getYGrads(Net& net, int l, int i) {
   return &net.yGrads[net.batchSize*I(net, l, i)];
 }
 
-float* getYGrads(Net& net, int l) {
+double* getYGrads(Net& net, int l) {
   return &net.yGrads[net.batchSize*I(net, l, 0)];
 }
 
-float* getBackGrads(Net& net, int l, int i) {
+double* getBackGrads(Net& net, int l, int i) {
   return &net.backGrads[net.batchSize*I(net, l, i)];
 }
 
-float* getBackGrads(Net& net, int l) {
+double* getBackGrads(Net& net, int l) {
   return &net.backGrads[net.batchSize*I(net, l, 0)];
 }
 
@@ -181,8 +187,8 @@ float* getBackGrads(Net& net, int l) {
 void printParams(std::ofstream& file, Net& net, int l, int i, int x) {
   file << "      [";
   for (int y = 0; y < net.res; y++) {
-    int precision = std::numeric_limits<float>::max_digits10;
-    float param = getParam(net, l, i, x, y);
+    int precision = std::numeric_limits<double>::max_digits10;
+    double param = getParam(net, l, i, x, y);
 
     file << std::setprecision(precision) << param << ", ";
   }
@@ -235,40 +241,40 @@ void printParams(int i, Net& net) {
 
 void allocNet(Net& net) {
   // Model
-  net.params = new float[net.numUnits*net.unitSize];
+  net.params = new double[net.numUnits*net.unitSize];
 
   net.cPtLocs  = new CPtLocs [net.batchSize*net.numUnits];
   net.cPtVals  = new CPtVals [net.batchSize*net.numUnits];
   net.cPtDists = new CPtDists[net.batchSize*net.numUnits];
-  net.acts     = new float   [net.batchSize*net.numUnits];
+  net.acts     = new double  [net.batchSize*net.numUnits];
 
   // Optimiser
   net.stats        = new Moments     [net.numUnits];
-  net.dError       = new float       [net.batchSize];
-  net.batchGrads   = new float       [net.batchSize*net.numUnits*net.unitSize];
+  net.dError       = new double      [net.batchSize];
+  net.batchGrads   = new double      [net.batchSize*net.numUnits*net.unitSize];
   net.exampleGrads = new ExampleGrads[net.batchSize*net.numUnits];
-  net.regGrads     = new float       [              net.numUnits*net.unitSize];
-  net.xRegGrads    = new float       [              net.numUnits*net.unitSize];
-  net.xGrads       = new float       [net.batchSize*net.numUnits];
-  net.yGrads       = new float       [net.batchSize*net.numUnits];
+  net.regGrads     = new double      [              net.numUnits*net.unitSize];
+  net.xRegGrads    = new double      [              net.numUnits*net.unitSize];
+  net.xGrads       = new double      [net.batchSize*net.numUnits];
+  net.yGrads       = new double      [net.batchSize*net.numUnits];
   net.wGrads       = new WGrads      [net.batchSize*net.numUnits];
-  net.backGrads    = new float       [net.batchSize*net.numUnits];
-  net.step         = new float       [              net.numUnits*net.unitSize];
+  net.backGrads    = new double      [net.batchSize*net.numUnits];
+  net.step         = new double      [              net.numUnits*net.unitSize];
 }
 
 void initUnit(Net& net, int l, int i) {
-  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+  std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
-  float *unit = getUnit(net, l, i);
+  double *unit = getUnit(net, l, i);
   for (int x = 0; x < net.res; x++)
     for (int y = 0; y < net.res; y++) {
-      float fx = x / (net.res - 1.0);
-      float fy = y / (net.res - 1.0);
-      if (fx > 0.5 != fy > 0.5) unit[I_unit(net, x, y)] = 0.0;
-      else                      unit[I_unit(net, x, y)] = 1.0;
+      double fx = x / (net.res - 1.0);
+      double fy = y / (net.res - 1.0);
+      if ((fx > 0.5) != (fy > 0.5)) unit[I_unit(net, x, y)] = 0.0;
+      else                          unit[I_unit(net, x, y)] = 1.0;
 
-      unit[I_unit(net, x, y)] = distribution(generator);
       unit[I_unit(net, x, y)] = (fx + fy) / 2.0;
+      unit[I_unit(net, x, y)] = distribution(generator);
     }
 }
 
@@ -279,9 +285,9 @@ void initNet(Net& net) {
 }
 
 Net makeNet(
-    int dim, int res, float reg,
-    float **inputs, float *targets, int numExamples,
-    float rate, float momentum, int batchSize
+    int dim, int res, double reg,
+    double **inputs, double *targets, int numExamples,
+    double rate, double momentum, int batchSize
 ) {
   Net net;
 
@@ -314,7 +320,7 @@ Net makeNet(
 /******************** INPUT EVALUATION (FEED-FORWARD PASS) ********************/
 
 void binPair(
-    Net& net, float x,
+    Net& net, double x,
     int& xbl, int& xbu
 ) {
   xbl = (int) (x * (net.res - 1));
@@ -324,7 +330,7 @@ void binPair(
 }
 
 void binPairs(
-    Net& net, float x, float y,
+    Net& net, double x, double y,
     int& xbl, int& xbu, int& ybl, int& ybu
 ) {
   binPair(net, x, xbl, xbu);
@@ -332,21 +338,21 @@ void binPairs(
 }
 
 void distPair(
-    Net& net, float x,     // Inputs
+    Net& net, double x,     // Inputs
     int xbl, int xbu,
-    float &xdl, float &xdu // Outputs
+    double &xdl, double &xdu // Outputs
 ) {
-  float xsl = xbl / (net.res - 1.0); // Snapped upper
-  float xsu = xbu / (net.res - 1.0); // Snapped lower
+  double xsl = xbl / (net.res - 1.0); // Snapped upper
+  double xsu = xbu / (net.res - 1.0); // Snapped lower
 
   xdl = x - xsl;
   xdu = xsu - x;
 }
 
 void distPairs(
-    Net& net, float x, float y,                    // Inputs
+    Net& net, double x, double y,                    // Inputs
     int xbl, int xbu, int ybl, int ybu,
-    float &xdl, float &xdu, float &ydl, float &ydu // Outputs
+    double &xdl, double &xdu, double &ydl, double &ydu // Outputs
 ) {
   distPair(net, x, xbl, xbu, xdl, xdu);
   distPair(net, y, ybl, ybu, ydl, ydu);
@@ -355,7 +361,7 @@ void distPairs(
 void computeCPtLocsInput(Net& net) {
   // Figure out where the previous layer of `acts` and `cPtLocs` is in memory
   CPtLocs  *cPtLocs = getCPtLocs(net, 0);
-  float   **acts    = net.batchInputs;
+  double   **acts    = net.batchInputs;
 
   // Compute act locs
   for (int i(0), I(lenLayer(net, 0)); i < I; i++) {
@@ -372,7 +378,7 @@ void computeCPtLocsInput(Net& net) {
 void computeCPtLocsHidden(Net& net, int l) {
   // Figure out where the previous layer of `acts` and `cPtLocs` is in memory
   CPtLocs *cPtLocs = getCPtLocs(net, l);
-  float   *acts    = getActs   (net, l-1);
+  double   *acts    = getActs   (net, l-1);
 
   // Compute act locs
   for (int i(0), I(lenLayer(net, l)); i < I; i++) {
@@ -394,7 +400,7 @@ void computeCPtLocs(Net& net, int l) {
 void computeCPtDistsInput(Net& net) {
   CPtLocs   *cPtLocs  = getCPtLocs (net, 0);
   CPtDists  *cPtDists = getCPtDists(net, 0);
-  float    **acts     = net.batchInputs;
+  double    **acts     = net.batchInputs;
 
   // Compute `cPtDists`
   for (int i(0), I(lenLayer(net, 0)); i < I; i++) {
@@ -412,7 +418,7 @@ void computeCPtDistsInput(Net& net) {
 void computeCPtDistsHidden(Net& net, int l) {
   CPtLocs  *cPtLocs  = getCPtLocs (net, l);
   CPtDists *cPtDists = getCPtDists(net, l);
-  float    *acts     = getActs    (net, l-1);
+  double    *acts     = getActs    (net, l-1);
 
   // Compute `cPtDists`
   for (int i(0), I(lenLayer(net, l)); i < I; i++) {
@@ -435,7 +441,7 @@ void computeCPtDists(Net& net, int l) {
 void computeCPtVals(Net& net, int l) {
   CPtLocs *cPtLocs  = getCPtLocs(net, l);
   CPtVals *cPtVals  = getCPtVals(net, l);
-  float   *unit     = getUnit   (net, l);
+  double   *unit     = getUnit   (net, l);
 
   for (int i(0), I(lenLayer(net, l)); i < I; i++) {
     for (int j(0), J(net.batchSize); j < J; j++) {
@@ -457,8 +463,8 @@ void computeCPtVals(Net& net, int l) {
 void computeActs(Net& net, int l) {
   CPtVals  *cPtVals  = getCPtVals (net, l);
   CPtDists *cPtDists = getCPtDists(net, l);
-  float    *acts     = getActs    (net, l);
-  float    norm      = (net.res - 1) * (net.res - 1);
+  double    *acts     = getActs    (net, l);
+  double    norm      = (net.res - 1) * (net.res - 1);
 
   for (int i(0), I(net.batchSize * lenLayer(net, l)); i < I; i++) {
     acts[i] = norm * (
@@ -468,26 +474,27 @@ void computeActs(Net& net, int l) {
         cPtVals[i].xuyu * cPtDists[i].xdl * cPtDists[i].ydl
     );
   }
-  for (int i(0), I(net.batchSize * lenLayer(net, l)); i < I; i++)
-    acts[i] = clamp(acts[i], 0.0, 1.0);
 }
 
-void batchNorm(float *x, int n, float avg, float var) {
-  if (var <= FLT_MIN) return;
+void batchNorm(double *x, int n, double avg, double var) {
+  if (var <= DBL_MIN) return;
 
-  float  gamma = 0.25;
-  float  beta  = 0.5;
+  double beta  = 0.5;
+  double gamma = 0.125;
 
   add(x, n, - avg);
   mul(x, n, gamma/sqrt(var));
   add(x, n, beta);
+
+  for (int i = 0; i < n; i++)
+    x[i] = clamp(x[i], 0.0, 1.0);
 }
 
 void batchNorm(Net& net, int l) {
   if (net.batchSize <= 1) return;
 
-  float *unit;
-  float *acts;
+  double *unit;
+  double *acts;
   Moments *stats = getStats(net, l);
   int       i;
   const int L = lenLayer(net, l);
@@ -497,7 +504,7 @@ void batchNorm(Net& net, int l) {
     moments(acts, net.batchSize, stats[i].avg, stats[i].var);
 
   // Apply Bessel's correction
-  float populationToSample = net.batchSize / ((float) net.batchSize - 1.0);
+  double populationToSample = net.batchSize / ((double) net.batchSize - 1.0);
   for (int i = 0; i < L; i++)
     stats[i].var *= populationToSample;
 
@@ -523,19 +530,19 @@ void forward(Net& net, bool doBatchNorm) {
   }
 }
 
-void forward(Net& net, float** batchInputs, bool doBatchNorm=false) {
+void forward(Net& net, double** batchInputs, bool doBatchNorm=false) {
   net.batchInputs = batchInputs;
   forward(net, doBatchNorm);
 }
 
-void forward(Net& net, float* input) {
+void forward(Net& net, double* input) {
   // Start using a batch size of 1
   int oldBatchSize = net.batchSize;
   net.batchSize = 1;
 
   // Forward-prop and copy the output to the usual place (`net.batchOutputs`)
   forward(net, &input);
-  float *output = getActs(net, net.depth - 1);
+  double *output = getActs(net, net.depth - 1);
   net.batchOutputs[0] = output[0];
 
   // Restore batch size
@@ -583,7 +590,7 @@ void computeYGrads(Net& net) {
 void computeWGrads(Net& net) {
   CPtDists *cPtDists = net.cPtDists;
   WGrads   *wGrads   = net.wGrads;
-  float    norm      = (net.res - 1) * (net.res - 1);
+  double    norm      = (net.res - 1) * (net.res - 1);
 
   for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
     wGrads[i].xlyl = norm * cPtDists[i].xdu * cPtDists[i].ydu;
@@ -593,13 +600,13 @@ void computeWGrads(Net& net) {
   }
 }
 
-float dError(float output, float target) {
+double dError(double output, double target) {
   return output - target;
 }
 
 void computeBackGrads(Net& net) {
   {
-    float *backGrads = getBackGrads(net, net.depth - 1);
+    double *backGrads = getBackGrads(net, net.depth - 1);
     for (int i = net.batchSize - 1; i >= 0; i--)
       backGrads[i] = 1.0;
   }
@@ -607,15 +614,15 @@ void computeBackGrads(Net& net) {
   for (int i = net.depth - 1; i >= 1; i--) {
     int L = lenLayer(net, i);
 
-    float *xGrads        = getXGrads   (net, i);
-    float *yGrads        = getYGrads   (net, i);
-    float *prevBackGrads = getBackGrads(net, i-1);
-    float *nextBackGrads = getBackGrads(net, i);
+    double *xGrads        = getXGrads   (net, i);
+    double *yGrads        = getYGrads   (net, i);
+    double *prevBackGrads = getBackGrads(net, i-1);
+    double *nextBackGrads = getBackGrads(net, i);
 
     for (int j = L-1; j >= 0; j--) {
       for (int k(net.batchSize - 1), K(net.batchSize); k >= 0; k--) {
-        prevBackGrads[(2*j+0)*K + k] = /*sgn*/(nextBackGrads[j*K + k]) * xGrads[j*K + k];
-        prevBackGrads[(2*j+1)*K + k] = /*sgn*/(nextBackGrads[j*K + k]) * yGrads[j*K + k];
+        prevBackGrads[(2*j+0)*K + k] = sgn(nextBackGrads[j*K + k]) * xGrads[j*K + k];
+        prevBackGrads[(2*j+1)*K + k] = sgn(nextBackGrads[j*K + k]) * yGrads[j*K + k];
       }
     }
   }
@@ -630,7 +637,7 @@ void computeBackGrads(Net& net) {
 
 void computeExampleGrads(Net& net) {
   ExampleGrads *exampleGrads = net.exampleGrads;
-  float        *backGrads    = net.backGrads;
+  double        *backGrads    = net.backGrads;
   WGrads       *wGrads       = net.wGrads;
 
   for (int i(0), I(net.batchSize * net.numUnits); i < I; i++) {
@@ -649,16 +656,16 @@ void backward(Net& net) {
   computeExampleGrads(net);
 }
 
-void backward(Net& net, float* targets) {
+void backward(Net& net, double* targets) {
   net.batchTargets = targets;
   backward(net);
 }
 
 // TODO: Profile function
 void computeRegGrads(Net& net) {
-  float *unit;
-  float *xRegGrads;
-  float *regGrads;
+  double *unit;
+  double *xRegGrads;
+  double *regGrads;
 
   for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
     net.regGrads[i] = 0.0;
@@ -721,7 +728,7 @@ void computeRegGrads(Net& net) {
                          y == 0 || y == Y - 1) &&
                         !isCorner;
 
-        float c;
+        double c;
         if      (isCorner) c = 4.0;
         else if (isEdge)   c = 6.0;
         else               c = 9.0;
@@ -740,7 +747,7 @@ void computeRegGrads(Net& net) {
 
 void addExampleGrads(Net& net) {
   int           batchSize    = net.batchSize;
-  float        *batchGrads   = net.batchGrads;
+  double        *batchGrads   = net.batchGrads;
   ExampleGrads *exampleGrads = net.exampleGrads;
   CPtLocs      *cPtLocs      = net.cPtLocs;
 
@@ -763,7 +770,7 @@ void addExampleGrads(Net& net) {
 
 void addExampleError(Net& net) {
   for (int i(0), I(net.batchSize); i < I; i++) {
-    float dErr = net.batchOutputs[i] - net.batchTargets[i];
+    double dErr = net.batchOutputs[i] - net.batchTargets[i];
     net.batchMse += dErr * dErr / I / 2.0;
   }
 }
@@ -782,7 +789,7 @@ void initBatchVars(Net& net) {
   // Shuffle examples
   bool epochDone = net.batchSize * (net.batchIndex + 1) > net.numExamples;
   if (epochDone) {
-    //shuffleExamples(net); TODO: Uncomment
+    shuffleExamples(net);
     net.batchIndex = 0;
   }
 
@@ -794,12 +801,13 @@ void initBatchVars(Net& net) {
   net.batchMse = 0.0;
 }
 
-void computeBatchGrads(Net& net) {
+void computeBatchGrads(Net& net, bool doIncBatch=true) {
   initBatchVars(net);
 
   // Get loop bounds and increment batchIndex for the next call
   int i = net.batchSize * net.batchIndex;
-  net.batchIndex++;
+  if (doIncBatch)
+    net.batchIndex++;
 
   forward (net, &net.inputs[i], true);
   backward(net, &net.targets[i]);
@@ -807,35 +815,36 @@ void computeBatchGrads(Net& net) {
   addExampleError(net);
 }
 
-float obj(Net& net, float **inputs, float *targets) {
-  float result = 0.0;
+double obj(Net& net, double **inputs, double *targets) {
+  double result = 0.0;
 
   forward(net, inputs);
 
   for (int i(0), I(net.batchSize); i < I; i++) {
-    float dErr = net.batchOutputs[i] - targets[i];
+    double dErr = net.batchOutputs[i] - targets[i];
     result += dErr * dErr / I / 2.0;
   }
 
   return result;
 }
 
-void computeBatchGradsNumerically(Net& net) {
+void computeBatchGradsNumerically(Net& net, bool doIncBatch=true) {
   initBatchVars(net);
 
   // Get loop bounds and increment batchIndex for the next call
   int i = net.batchSize * net.batchIndex;
-  net.batchIndex++;
+  if (doIncBatch)
+    net.batchIndex++;
 
   // Performs batch normalisation
   forward(net, &net.inputs[i], true);
 
   for (int j(0), J(net.unitSize * net.numUnits); j < J; j++) {
-    float h = 1e-3;
-    float objSub;
-    float objAdd;
+    double h = 1e-3;
+    double objSub;
+    double objAdd;
 
-    float prev = net.params[j];
+    double prev = net.params[j];
     net.params[j] = prev + h; objAdd = obj(net, &net.inputs[i], &net.targets[i]);
     net.params[j] = prev - h; objSub = obj(net, &net.inputs[i], &net.targets[i]);
     net.params[j] = prev;
@@ -845,29 +854,27 @@ void computeBatchGradsNumerically(Net& net) {
 }
 
 void checkGradients(Net& net) {
-  computeBatchGrads(net);
+  int sizeOfBatchGrads = net.numUnits*net.unitSize;
+  double *batchGrads = new double[sizeOfBatchGrads];
+
+  computeBatchGrads(net, false);
 
   // Copy `net.batchGrads`
-  int sizeOfBatchGrads = net.batchSize*net.numUnits*net.unitSize;
-  float *batchGrads = new float[sizeOfBatchGrads];
   for (int i = 0; i < sizeOfBatchGrads; i++)
     batchGrads[i] = net.batchGrads[i];
-
-  // Rewind batch index
-  net.batchIndex--;
 
   computeBatchGradsNumerically(net);
 
   // Compare gradients
-  float threshold = 1e-2;
+  double threshold = 1e-6;
   for (int i = 0; i < sizeOfBatchGrads; i++) {
-    float diff = net.batchGrads[i] - batchGrads[i];
-    float adiff = fabs(diff);
+    double diff = net.batchGrads[i] - batchGrads[i];
+    double adiff = fabs(diff);
     if (adiff > threshold) {
       std::cout
         << "Grad "
         << i
-        << "<"
+        << "/"
         << sizeOfBatchGrads
         << " in batch "
         << net.batchIndex - 1
@@ -897,27 +904,36 @@ void sgd(Net& net) {
   // Update params
   for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
     net.params[i] += net.step[i];
+
+  // Rob momentum
+  for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
+    if (net.params[i] < 0.0 || net.params[i] > 1.0)
+      net.step[i] = 0.0;
+
+  // Clamp params
+  for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
+    net.params[i] = clamp(net.params[i], 0.0, 1.0);
 }
 
 /******************************** BENCHMARKING ********************************/
 
-float classificationError(Net& net, float* input, float target) {
+double classificationError(Net& net, double* input, double target) {
   forward(net, input);
 
   if (roundf(net.batchOutputs[0]) == target) return 0.0;
   return 1.0;
 }
 
-float classificationError(
+double classificationError(
     Net& net,
-    float** inputs,
-    float* targets,
+    double** inputs,
+    double* targets,
     int numExamples,
     int sampleSize=5000
 ) {
   sampleSize = min(sampleSize, numExamples);
 
-  float sum = 0.0;
+  double sum = 0.0;
   for (int i = 0; i < sampleSize; i++) {
     std::uniform_int_distribution<int> distribution(0, sampleSize-1);
     int j = distribution(generator);
@@ -929,7 +945,7 @@ float classificationError(
 
 /******************************* SYNTHETIC DATA *******************************/
 
-int numOnes(float *input, int dim) {
+int numOnes(double *input, int dim) {
   int n = 0;
   for (int i = 0; i < dim; i++)
     if (input[i] >= 0.5)
@@ -937,23 +953,23 @@ int numOnes(float *input, int dim) {
   return n;
 }
 
-float trueClassifier(float *input, int dim) {
-  if (input[0] == max(input, dim)) return 1.0;
-  //if (numOnes(input, dim) % 2 == 0) return 1.0;
+double trueClassifier(double *input, int dim) {
+  //if (input[0] == max(input, dim)) return 1.0;
+  if (numOnes(input, dim) % 2 == 0) return 1.0;
 
   return 0.0;
 }
 
-void makeData(float **&inputs, float *&targets, int dim, int numExamples) {
-  std::uniform_real_distribution<float> distribution(0.0, 1.0);
+void makeData(double **&inputs, double *&targets, int dim, int numExamples) {
+  std::uniform_real_distribution<double> distribution(0.0, 1.0);
 
   // Allocate inputs
-  inputs = new float*[numExamples];
+  inputs = new double*[numExamples];
   for (int i = 0; i < numExamples; i++)
-    inputs[i] = new float[dim];
+    inputs[i] = new double[dim];
 
   // Allocate targets
-  targets = new float[numExamples];
+  targets = new double[numExamples];
 
   // Init inputs
   for (int i = 0; i < numExamples; i++)
@@ -969,19 +985,19 @@ void makeData(float **&inputs, float *&targets, int dim, int numExamples) {
 
 int main() {
   // MODEL VARS
-  int   dim = 128;
-  int   res = 10;
-  float reg = 0.1;
+  int    dim = 4;
+  int    res = 25;
+  double reg = 0.1;
 
   // OPTIMISER VARS
-  float rate      = 0.1;
-  float momentum  = 0.0;
-  int   batchSize = 100;
+  double rate      = 0.01;
+  double momentum  = 0.9;
+  int    batchSize = 100;
 
   // LOAD SYNTHETIC DATA SET
   int     numExamplesTrn = 100000;
-  float** inputsTrn;
-  float*  targetsTrn;
+  double** inputsTrn;
+  double*  targetsTrn;
 
   makeData(inputsTrn, targetsTrn, dim, numExamplesTrn);
 
@@ -992,8 +1008,8 @@ int main() {
       rate, momentum, batchSize
   );
 
-  checkGradients(net);
-  return 0;
+  //checkGradients(net);
+  //return 0;
 
   /* TEST */
   //printParams(0, net);
@@ -1012,7 +1028,7 @@ int main() {
 
   //std::cout << net.batchMse << std::endl;
 
-  //float e;
+  //double e;
   //e = classificationError(net, inputsTrn, targetsTrn, batchSize, batchSize);
   //e *= 100;
   //std::cout << "Train error (%): " << e << std::endl;
@@ -1030,7 +1046,7 @@ int main() {
 
     std::cout << net.batchMse << std::endl;
 
-    float e;
+    double e;
     e = classificationError(net, inputsTrn, targetsTrn, numExamplesTrn, numExamplesTrn);
     e *= 100;
     std::cout << "Train error (%): " << e << std::endl;

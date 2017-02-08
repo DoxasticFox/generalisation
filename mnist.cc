@@ -1,7 +1,7 @@
 #include "mnist.h"
 
-float* makeIdentityMap(int n) {
-  float *map = new float[n];
+double* makeIdentityMap(int n) {
+  double *map = new double[n];
 
   for (int i = 0; i < n; i++)
     map[i] = i;
@@ -9,8 +9,8 @@ float* makeIdentityMap(int n) {
   return map;
 }
 
-float* makeRandomMap(int n) {
-  float *map = makeIdentityMap(n);
+double* makeRandomMap(int n) {
+  double *map = makeIdentityMap(n);
 
   // Shuffle map
   for (int i = n-1; i >= 0; --i){
@@ -24,7 +24,7 @@ float* makeRandomMap(int n) {
   return map;
 }
 
-void makeQuasiConvMapRec(int x, int y, int lenx, int leny, float* map, int &i) {
+void makeQuasiConvMapRec(int x, int y, int lenx, int leny, double* map, int &i) {
   if (lenx == 0 || leny == 0) return;
   if (lenx == 1 && leny == 1) {
     map[i] = 28 * x + y;
@@ -44,8 +44,8 @@ void makeQuasiConvMapRec(int x, int y, int lenx, int leny, float* map, int &i) {
   makeQuasiConvMapRec(xRight, yBot, lenRight, lenBot, map, i); // Bot right
 }
 
-float* makeQuasiConvMap(int n) {
-  float *map = makeIdentityMap(n);
+double* makeQuasiConvMap(int n) {
+  double *map = makeIdentityMap(n);
 
   int i = 0;
   makeQuasiConvMapRec(0, 0, 28, 28, map, i);
@@ -53,8 +53,8 @@ float* makeQuasiConvMap(int n) {
   return map;
 }
 
-void reorderVector(float* v, float* map, int n) {
-  float *tmp = new float[n];
+void reorderVector(double* v, double* map, int n) {
+  double *tmp = new double[n];
 
   // 1. Put the reordered vector components in tmp
   for (int i = 0; i < n; i++) {
@@ -84,10 +84,10 @@ int reverseInt(int i) {
 }
 
 void loadMnistImages(
-    float**& images,
+    double**& images,
     int& numImages,
     std::string prefix,
-    float *map
+    double *map
 ) {
   int magicNumber;
   int numRows;
@@ -109,10 +109,10 @@ void loadMnistImages(
   numCols     = reverseInt(numCols);
 
   // Allocate space
-  images = new float*[numImages];
+  images = new double*[numImages];
   for (int i = 0; i < numImages; i++) {
     int size = pow(2, ceil(log2(numRows*numCols)));
-    images[i] = new float[size*2];
+    images[i] = new double[size*2];
   }
 
   // Load data
@@ -121,8 +121,8 @@ void loadMnistImages(
       unsigned char pixel = 0;
       file.read((char*) &pixel, 1);
 
-      images[i][j     ] = (float) pixel;
-      images[i][j+1024] = (float) pixel;
+      images[i][j     ] = (double) pixel;
+      images[i][j+1024] = (double) pixel;
     }
   }
 
@@ -141,7 +141,7 @@ void loadMnistImages(
 }
 
 void loadMnistLabels(
-    float*& labels,
+    double*& labels,
     int& numLabels,
     int digit,
     std::string prefix
@@ -160,7 +160,7 @@ void loadMnistLabels(
   numLabels   = reverseInt(numLabels);
 
   // Allocate space
-  labels = new float[numLabels];
+  labels = new double[numLabels];
 
   // Load data
   for (int i = 0; i < numLabels; i++) {
@@ -176,12 +176,12 @@ void loadMnistLabels(
 }
 
 void loadMnist(
-    float**& images,
-    float*& labels,
+    double**& images,
+    double*& labels,
     int& numExamples,
     int digit,
     std::string prefix,
-    float *map
+    double *map
 ) {
   int numImages, numLabels;
 
@@ -193,8 +193,8 @@ void loadMnist(
 }
 
 void loadMnist(
-    float**& images,
-    float*& labels,
+    double**& images,
+    double*& labels,
     int& numExamples,
     int digit,
     std::string prefix
@@ -203,8 +203,8 @@ void loadMnist(
 }
 
 void loadMnist(
-    float**& images,
-    float*& labels,
+    double**& images,
+    double*& labels,
     int& numExamples,
     int digit
 ) {

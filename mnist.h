@@ -8,16 +8,16 @@
 #include <random>
 #include <string>
 
-float* makeIdentityMap(int n);
-float* makeRandomMap(int n);
-void makeQuasiConvMapRec(int x, int y, int lenx, int leny, float* map, int &i);
-float* makeQuasiConvMap(int n);
-void reorderVector(float* v, float* map, int n);
+double* makeIdentityMap(int n);
+double* makeRandomMap(int n);
+void makeQuasiConvMapRec(int x, int y, int lenx, int leny, double* map, int &i);
+double* makeQuasiConvMap(int n);
+void reorderVector(double* v, double* map, int n);
 int reverseInt(int i);
-void loadMnistImages(float**& images, int& numImages, std::string prefix);
-void loadMnistLabels(float*& labels, int& numLabels, int digit, std::string prefix);
-void loadMnist(float**& images, float*& labels, int& numExamples, int digit);
-void loadMnist(float**& images, float*& labels, int& numExamples, int digit, std::string prefix);
-void loadMnist(float**& images, float*& labels, int& numExamples, int digit, std::string prefix, float *map);
+void loadMnistImages(double**& images, int& numImages, std::string prefix);
+void loadMnistLabels(double*& labels, int& numLabels, int digit, std::string prefix);
+void loadMnist(double**& images, double*& labels, int& numExamples, int digit);
+void loadMnist(double**& images, double*& labels, int& numExamples, int digit, std::string prefix);
+void loadMnist(double**& images, double*& labels, int& numExamples, int digit, std::string prefix, double *map);
 
 #endif
