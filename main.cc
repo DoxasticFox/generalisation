@@ -59,6 +59,11 @@ struct Net {
   double        *yGrads;
   WGrads       *wGrads;
   double        *backGrads;
+
+  // TODO: Utilisation variables
+  size_t numSeenExamples;
+  size_t *hits;
+  double *hitRates;
 };
 
 std::default_random_engine generator;
@@ -148,6 +153,16 @@ CPtVals* getCPtVals(Net& net, int l, int i) {
 
 CPtVals* getCPtVals(Net& net, int l) {
   return getCPtVals(net, l, 0);
+}
+
+// TODO
+size_t* getHits(Net& net, int l) {
+  return &net.hits[I_params(net, l, 0)];
+}
+
+// TODO
+double* getHitRates(Net& net, int l) {
+  return &net.hitRates[I_params(net, l, 0)];
 }
 
 CPtDists* getCPtDists(Net& net, int l, int i) {
@@ -260,6 +275,10 @@ void allocNet(Net& net) {
   net.wGrads       = new WGrads      [net.batchSize*net.numUnits];
   net.backGrads    = new double      [net.batchSize*net.numUnits];
   net.step         = new double      [              net.numUnits*net.unitSize];
+
+  // TODO: Utilisation variables
+  net.hits     = new size_t[net.numUnits * net.unitSize];
+  net.hitRates = new double[net.numUnits * net.unitSize];
 }
 
 void initUnit(Net& net, int l, int i) {
@@ -273,7 +292,8 @@ void initUnit(Net& net, int l, int i) {
       if ((fx > 0.5) != (fy > 0.5)) unit[I_unit(net, x, y)] = 0.0;
       else                          unit[I_unit(net, x, y)] = 1.0;
 
-      unit[I_unit(net, x, y)] = (fx + fy) / 2.0;
+      //unit[I_unit(net, x, y)] = (fx + fy) / 2.0;
+      //unit[I_unit(net, x, y)] = (int) (distribution(generator) + 0.5);
       unit[I_unit(net, x, y)] = distribution(generator);
     }
 }
@@ -282,6 +302,12 @@ void initNet(Net& net) {
   for (int i = 0; i < net.depth; i++)
     for (int j = 0; j < lenLayer(net, i); j++)
       initUnit(net, i, j);
+
+  net.numSeenExamples = 0;
+  for (size_t i(0), I(net.numUnits * net.unitSize); i < I; I++)
+    net.hits[i] = 0;
+  for (size_t i(0), I(net.numUnits * net.unitSize); i < I; I++)
+    net.hitRates[i] = 0;
 }
 
 Net makeNet(
@@ -477,13 +503,13 @@ void computeActs(Net& net, int l) {
 }
 
 void batchNorm(double *x, int n, double avg, double var) {
-  if (var <= DBL_MIN) return;
+  //if (var <= 1e-3) return;
 
   double beta  = 0.5;
   double gamma = 0.125;
 
   add(x, n, - avg);
-  mul(x, n, gamma/sqrt(var));
+  mul(x, n, gamma/sqrt(var + 1e-12));
   add(x, n, beta);
 
   for (int i = 0; i < n; i++)
@@ -519,12 +545,36 @@ void batchNorm(Net& net, int l) {
     batchNorm(unit, net.unitSize, stats[i].avg, stats[i].var);
 }
 
+// TODO
+void computeHits(Net& net, int l) {
+  CPtLocs *cPtLocs  = getCPtLocs(net, l);
+  size_t  *hits     = getHits   (net, l);
+
+  for (int i(0), I(lenLayer(net, l)); i < I; i++) {
+    for (int j(0), J(net.batchSize); j < J; j++) {
+      int xbl = cPtLocs[i*J+j].xbl;
+      int xbu = cPtLocs[i*J+j].xbu;
+      int ybl = cPtLocs[i*J+j].ybl;
+      int ybu = cPtLocs[i*J+j].ybu;
+
+      hits[I_unit(net, xbl, ybl)] += 1;
+      hits[I_unit(net, xbu, ybl)] += 1;
+      hits[I_unit(net, xbl, ybu)] += 1;
+      hits[I_unit(net, xbu, ybu)] += 1;
+    }
+
+    hits += net.unitSize;
+  }
+}
+
 void forward(Net& net, bool doBatchNorm) {
   for (int i(0), I(net.depth); i < I; i++) {
     computeCPtLocs (net, i);
+    computeHits    (net, i); // TODO
     computeCPtDists(net, i);
     computeCPtVals (net, i);
     computeActs    (net, i);
+    // TODO
     if (doBatchNorm && i < I - 1)
     batchNorm      (net, i);
   }
@@ -747,7 +797,7 @@ void computeRegGrads(Net& net) {
 
 void addExampleGrads(Net& net) {
   int           batchSize    = net.batchSize;
-  double        *batchGrads   = net.batchGrads;
+  double       *batchGrads   = net.batchGrads;
   ExampleGrads *exampleGrads = net.exampleGrads;
   CPtLocs      *cPtLocs      = net.cPtLocs;
 
@@ -895,6 +945,7 @@ void checkGradients(Net& net) {
 void sgd(Net& net) {
   computeRegGrads(net);
   computeBatchGrads(net);
+  return; // TODO
 
   // Compute step
   for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
@@ -985,74 +1036,81 @@ void makeData(double **&inputs, double *&targets, int dim, int numExamples) {
 
 int main() {
   // MODEL VARS
-  int    dim = 4;
-  int    res = 25;
+  int    dim = 1024;
+  int    res = 40;
   double reg = 0.1;
 
-  // OPTIMISER VARS
-  double rate      = 0.01;
-  double momentum  = 0.9;
-  int    batchSize = 100;
+  // MAKE INPUT RE-ORDERING MAP
+  double *map = makeQuasiConvMap(dim);
 
-  // LOAD SYNTHETIC DATA SET
-  int     numExamplesTrn = 100000;
+  // LOAD MNIST TRAINING SET
+  int      digit = 0;
+  int      numExamplesTrn;
   double** inputsTrn;
   double*  targetsTrn;
+  loadMnist(inputsTrn, targetsTrn, numExamplesTrn, digit, "train", map);
 
-  makeData(inputsTrn, targetsTrn, dim, numExamplesTrn);
+  // LOAD MNIST TESTING SET
+  int      numExamplesTst;
+  double** inputsTst;
+  double*  targetsTst;
+  loadMnist(inputsTst, targetsTst, numExamplesTst, digit, "t10k", map);
 
-  // Make model
+  // LOAD SYNTHETIC DATA SET
+  //numExamplesTrn = 60000;
+  //makeData(inputsTrn, targetsTrn, dim, numExamplesTrn);
+
+  // OPTIMISER VARS
+  double rate      = 0.1;
+  double momentum  = 0.9;
+  int    batchSize = 6000;
+
   Net net = makeNet(
       dim, res, reg,
       inputsTrn, targetsTrn, numExamplesTrn,
       rate, momentum, batchSize
   );
 
-  //checkGradients(net);
-  //return 0;
-
-  /* TEST */
-  //printParams(0, net);
-  //forward(net, inputsTrn);
-
-  //for (int i = 0; i < batchSize; i++) {
-    //std::cout
-      //<< inputsTrn[i][0] << " "
-      //<< inputsTrn[i][1] << " "
-      //<< inputsTrn[i][2] << " "
-      //<< inputsTrn[i][3] << " "
-      //<< std::endl;
-    //std::cout << net.batchOutputs[i] << std::endl;
-    //std::cout << std::endl;
-  //}
-
-  //std::cout << net.batchMse << std::endl;
-
-  //double e;
-  //e = classificationError(net, inputsTrn, targetsTrn, batchSize, batchSize);
-  //e *= 100;
-  //std::cout << "Train error (%): " << e << std::endl;
-
-  //std::cout << std::endl;
-
-  //return 0;
-  /* TEST */
-
   // OPTIMISE
-  for (int i = 0; i < 10000; i++) {
-    for (int j = 0; j < 100; j++)
-      sgd(net);
-    net.reg *= 0.99;
+  for (int i = 0; i < 100000; i++) {
+    //for (int j = 0; j < 100; j++)
+      //sgd(net);
+    //net.reg *= 0.99;
 
-    std::cout << net.batchMse << std::endl;
+    //double e;
+    //e = classificationError(net, inputsTrn, targetsTrn, numExamplesTrn, numExamplesTrn);
+    //e *= 100;
+    //std::cout << "Train error (%): " << e << std::endl;
 
-    double e;
-    e = classificationError(net, inputsTrn, targetsTrn, numExamplesTrn, numExamplesTrn);
-    e *= 100;
-    std::cout << "Train error (%): " << e << std::endl;
+    //e = classificationError(net, inputsTst, targetsTst, numExamplesTst, numExamplesTst);
+    //e *= 100;
+    //std::cout << "Test error (%):  " << e << std::endl;
 
-    std::cout << std::endl;
+    //std::cout << net.batchMse << std::endl;
+    //std::cout << std::endl;
 
+    for (int i = 0; i < 60000/batchSize; i++)
+    sgd(net);
+
+    // Compute hitRates
+    net.numSeenExamples = 60000;
+    for (int i(0), I(net.numUnits * net.unitSize); i < I; i++)
+      //net.hitRates[i] = ((double) net.hits[i]);
+      net.hitRates[i] = log((double) net.hits[i] + 1.0);
+
+    // Perform contrast normalisation
+    double *hitRates = net.hitRates;
+    for (int i(0), I(net.numUnits); i < I; i++) {
+      double norm = max(hitRates, net.unitSize);
+
+      if (norm > 1e-9)
+        mul(hitRates, net.unitSize, 1.0/norm);
+
+      hitRates += net.unitSize;
+    }
+    //net.params = net.hitRates;
     printParams(i, net);
+
+    return 0;
   }
 }

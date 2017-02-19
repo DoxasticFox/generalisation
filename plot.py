@@ -12,7 +12,7 @@ def plot(net, fileNum):
 
     pI = nU * (nG + 1) - 1
     pJ = nL * (nG + 1) - 1
-    im = [[0.0 for i in range(pI)] for j in range(pJ)]
+    im = [[0.5 for i in range(pI)] for j in range(pJ)]
     for i, layer in enumerate(net):
         for j, unit in enumerate(layer):
             for k in range(nG):
