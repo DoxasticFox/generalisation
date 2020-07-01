@@ -41,7 +41,7 @@
       </p>
       <h3>2. A Simplified Class of Function Approximators</h3>
       <p>
-        Because neural networks are widely considered to be difficult to interpret, in part because of their high-dimensionality, we'll study a toy model composed of low-dimensional non-linear functions from \(\mathbb{R}^2\) to \(\mathbb{R}\). The way these functions are parameterised is largely unimportant. They could be modeled with neural networks&mdash;In fact I tried this with very similar results&mdash;however this post shows images and animations for a p-spline model.
+        Because neural networks are widely considered to be difficult to interpret, in part because of their high-dimensionality, we'll study a toy model composed of low-dimensional non-linear functions from \(\mathbb{R}^2\) to \(\mathbb{R}\). The way these functions are parameterised is largely unimportant. They could be modeled with neural networks&mdash;In fact I tried this with very similar results&mdash;however this post shows images and animations for the case where each function  \(\mathbb{R}^2 \to \mathbb{R}\) is a p-spline model.
       </p>
       <p>
         The entire model which we'll use for most this post will take eight inputs and return one:
@@ -85,7 +85,7 @@
 
       <h4>4.3 Training</h4>
       <p>
-        Training was accomplished using stochastic gradient descent. A custom-made regulariser and normalisation scheme, akin to batch normalisation <a href="https://arxiv.org/abs/1502.03167">(Ioffe and Szegedy, 2015)</a>, were also implemented. These were not gradient-based.
+        Training was accomplished using stochastic gradient descent. A regulariser and a normalisation scheme similar to batch normalisation <a href="https://arxiv.org/abs/1502.03167">(Ioffe and Szegedy, 2015)</a>, were also implemented. These were not gradient-based.
       </p>
       <p>
         A full description of the training method used is largely aside from the focus of this post and has been omitted from this section. It can be found the Appendix.
@@ -142,7 +142,7 @@
         In other words, the parity function is invariant to the order of its arguments.
       </p>
       <p>
-        Also notice that shading the black and white regions to be the same is a simplification in the sense that it reduces the number of possible outputs that the top-most layer can pass on to the next. More formally, it reduces the image of the layer under the training set. This can improve generalisation because the subsequent layer will only need learn to handle a reduced number of cases. Put differently, a layer which throws away as much information about the input as possible while still retaining enough information to learn the underlying function, makes it easier for downstream layers to learn.
+        Also notice that shading the black and white regions to be the same is a simplification in the sense that it reduces the number of possible outputs that the top-most layer can pass on to the next. More formally, it reduces the image of the layer under the training set. This can improve generalisation because the subsequent layer will only need learn to handle a reduced number of cases. Put differently, a layer that throws away as much information about the input as possible while still retaining enough information to learn the underlying function, makes it easier for downstream layers to learn.
       </p>
       <p>
         Now that it has been identified that the model can be simplified by reducing the image of the first layer under the training set, a (crude) method can be devised to do so as part of a training procedure. Under this method, the trained model from Figure 3 is taken, and each \(f_1, \ldots, f_4\) is re-initialised to 0.5 and trained end-to-end until convergence. The resulting model can be seen in Figure 5. Compare this to Figure 3. Notice that, because training was carried out end-to-end, the functions downstream from the first layer have become more parsimonious as well.
@@ -150,7 +150,7 @@
       <img class="figure" src="./images/figures/img-002500.png"/>
       <center>Figure 5: The model from Figure 3 re-trained to simplify its top-most layer.</center>
       <p>
-      This procedure can be repeated on subsequent layers. However, it is important to note that subsequent layers are not having co-domains reduced. Rather, they are having their image under the inputs they may receive from an upstream layer reduced. An animation of the entire procedure is shown in Figure 6. On this toy problem, the technique typically finds the simplest solution in the sense that the image of each layer under its input is as small as it can be while still fitting the training set. However, due to to the stochasticity of the training procedure used here, this is only <u>likely</u> to happen, not guaranteed.
+      This procedure can be repeated on subsequent layers. However, it is important to note that subsequent layers are not having their co-domains reduced. Rather, they are having their image under the inputs they may receive from an upstream layer reduced. An animation of the entire procedure is shown in Figure 6. On this toy problem, the technique typically finds the simplest solution in the sense that the image of each layer under its input is as small as it can be while still fitting the training set. However, due to to the stochasticity of the training procedure used here, this is only <u>likely</u> to happen, not guaranteed.
       </p>
       <img class="figure" src="./images/figures/full.gif"/>
       <center>Figure 6: The entire training procedure including function-wise re-training.</center>
@@ -187,11 +187,11 @@
         Standard backpropagation learning builds up brittle co-adaptations that work for the training data but do not generalize to unseen data. Random dropout breaks up these co-adaptations by making the presence of any particular hidden unit unreliable.
       </blockquote>
       <p>
-        However, the work presented in this post suggests that it is better to interpret dropout as a technique which slightly corrupts the surface that each layer represents. Under this interpretation, the more intricate a surface is, the less likely its original form is to be accurately represented by a corruption. This makes it least challenging to learn simple functions, which are qualitatively more similar to the top-most layer in Figure 3 than the bottom-most layer.
+        However, the work presented in this post suggests that it might be better to interpret dropout as a technique which slightly corrupts the surface that each layer represents. Under this interpretation, the more intricate a surface is, the less likely its original form is to be accurately represented by a corruption. This makes it least challenging to learn simple functions, which are qualitatively more similar to the top-most layer in Figure 3 than the bottom-most layer.
       </p>
 
       <p>
-        Other evidence for the "minimal image" hypothesis can be found in <a href="https://arxiv.org/abs/1603.05201">Shang et al. (2016)</a>, who &ldquo;[examined] existing CNN models and [observed] an intriguing property that the filters in the lower layers form pairs (i.e., filters with opposite phase)&rdquo;. Shang et al. suggested that the learned filters' tendency to be linearly dependent harmed performance. Upon preventing these superfluous filters from being learned, a significant improvement in generalisation was noted. This post suggests that it is not the fact that extraneous filters must be learned which hampers generalisation. Rather, it is the fact that the later layers must learn how to use those extra filters.
+        Other evidence for the &ldquo;minimal image&rdquo; hypothesis presented in this post can be found in <a href="https://arxiv.org/abs/1603.05201">Shang et al. (2016)</a>, who &ldquo;[examined] existing CNN models and [observed] an intriguing property that the filters in the lower layers form pairs (i.e., filters with opposite phase)&rdquo;. Shang et al. suggested that the learned filters' tendency to be linearly dependent harmed performance. Upon preventing these superfluous filters from being learned, a significant improvement in generalisation was noted. This post suggests that it is not the fact that extraneous filters must be learned which hampers generalisation. Rather, it is the fact that the later layers must learn how to use those extra filters.
       </p>
       <p>
         This post also provides helps to explain a property of sparsity, in which, perhaps counter-intuitively, more sparsity does not necessarily imply better generalisation (<a href="http://jmlr.csail.mit.edu/proceedings/papers/v15/glorot11a/glorot11a.pdf">Glorot et al., 2011</a>; <a href="https://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf">Mass at al., 2013</a>). The hypothesis forwarded here suggests that sparsity is only helpful insofar as it reduces the image of each layer. Because the outputs of neurones are typically real-valued, they can represent similar inputs using multiple output values. This multiplicity of output values for the same kind of input is what harmed generalisation on the problem presented in this post.
