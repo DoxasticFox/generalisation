@@ -39,6 +39,9 @@
       <p>
         This post provides an easily interpretable example, including images and animations, of how a multi-layered ("deep") function approximator (MLFA) can learn a function that provides superior generalisation compared to a single-layered ("shallow") approximator. The intuition gained from studying this example is applied to neural networks, which are themselves a class of MLFAs.
       </p>
+      <p>
+        It is discovered that MLFAs whose layers discard as much information as possible while still fitting the training set are the ones which generalise best.
+      </p>
       <h3>2. A Simplified Class of Function Approximators</h3>
       <p>
         Because neural networks are widely considered to be difficult to interpret, in part because of their high-dimensionality, we'll study a toy model composed of low-dimensional non-linear functions from \(\mathbb{R}^2\) to \(\mathbb{R}\). The way these functions are parameterised is largely unimportant. They could be modeled with neural networks&mdash;In fact I tried this with very similar results&mdash;however this post shows images and animations for the case where each function  \(\mathbb{R}^2 \to \mathbb{R}\) is a p-spline model.
