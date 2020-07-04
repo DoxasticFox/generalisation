@@ -37,10 +37,10 @@
     <section id="main_content" class="inner">
       <h3>1. Introduction</h3>
       <p>
-        This post provides an easily interpretable example, including images and animations, of how a multi-layered ("deep") function approximator (MLFA) can learn a function that provides superior generalisation compared to a single-layered ("shallow") approximator. The intuition gained from studying this example is applied to neural networks, which are themselves a class of MLFAs.
+        This post provides an easily interpretable example, including images and animations, of how a multi-layered ("deep") function approximator (MLFA) can learn a function that provides superior generalisation compared to ones learned by a single-layered ("shallow") approximator. The intuition gained from studying this example is applied to neural networks, which are themselves a class of MLFAs.
       </p>
       <p>
-        It is discovered that the MLFAs which generalise best are the ones whose layers discard as much information about their inputs as possible while still fitting the training set.
+        The key point argued in this post is that MLFAs generalise best when their layers discard as much information about their inputs as possible while still fitting the training set.
       </p>
       <h3>2. A Simplified Class of Function Approximators</h3>
       <p>
@@ -102,7 +102,10 @@
       <img class="figure" src="./images/figures/img-000500.png"/>
       <center>Figure 3: The trained model.</center>
       <p>
-        It can be seen that the top-most row of four functions (which correspond to \(f_1, \ldots, f_4\) in Figure 1) have come to approximate the function
+        It can be seen that the model effectively averages the rounded inputs before deciding only in the final layer whether the average indicates even parity (for which the final output is \(0\)) or odd parity (i.e. \(1\)).
+      </p>
+      <p>
+        To see this more clearly, consider the top-most row of four functions (which correspond to \(f_1, \ldots, f_4\) in Figure 1). They've come to approximate the function
         $$
           \begin{align}
             f_{1:4}(x_0, x_1) &amp;=
@@ -135,7 +138,7 @@
 
       <h5>4.4.2 Generalisation in The Trained Model</h5>
       <p>
-        The way the trained model computes the parity of its input is worth noting because it can lead to sub-optimal generalisation. This is an important observation because there is regulariser (that I know of) to prevent this kind of shortcoming in other multi-layered models like neural networks.
+        The way the trained model computes the parity of its input is worth noting because it can lead to sub-optimal generalisation. This is an important observation because there is no regulariser (that I know of) to prevent this kind of shortcoming in other multi-layered models like neural networks.
       </p>
       <p>
         To form a more precise characterisation of this shortcoming, consider the case where the dataset lacks examples whose rounded sum is equal to 4. Because the model learns to compute a count before checking for parity, one could not expect it to make the correct prediction whenever an example sums to 4. Consider also that the learned solution in Figure 3 would still be correct if the black regions in the first layer became white, or vice versa. One reason for this is that
@@ -160,7 +163,7 @@
       <img class="figure" src="./images/figures/img-003500.png"/>
       <center>Figure 7: The model after function-wise re-training has been completed.</center>
       <p>
-        Once re-training has been completed (Figure 7), the model no longer feeds forward a rounded count before computing parity in the output layer. Therefore, although if the model had never been trained on examples whose rounded sum was 4, it would still be able to accurately predict the correct label.
+        Once re-training has been completed (Figure 7), the model no longer feeds forward a rounded count before computing parity in the output layer. Therefore, although the model had never been trained on examples whose rounded sum was 4, it would still be able to accurately predict the correct label.
       </p>
 
       <h3>5. Function-wise Re-training on An Under-Complete Dataset</h3>
@@ -177,11 +180,11 @@
 
       <h3>6. Discussion: How Does This Apply To Neural Networks?</h3>
       <p>
-        The experiments recorded in this post strongly suggest that the principal way (possibly the only way) to reduce generalisation error in <u>any</u> multi-layered model is to reduce the image of each layer under its input. If this hypothesis holds, any method which successfully combats over-fitting in deep neural nets is an image-reduction technique. We can interpret a few commonly-used machine learning techniques as reducing the image of each layer.
+        The experiments recorded in this post strongly suggest that the principal way to reduce generalisation error in <u>any</u> multi-layered model is to reduce the image of each layer under its input. If this hypothesis holds, any method which successfully combats over-fitting in deep neural nets is an image-reduction technique. We can interpret a few commonly-used machine learning techniques as reducing the image of each layer.
       </p>
 
       <p>
-        For example, training with large batches is known to harm generalisation by creating "sharp" minima. In the neighbourhood of the minimum, the function can generate a larger range of values than a function whose minimum is flat. As was seen in the toy model, this creates a larger range of values which downstream layers would need to learn to deal with. Other noise-injection flatten minima in a similar way.
+        For example, training with large batches is known to harm generalisation by creating "sharp" minima. In the neighbourhood of the minimum, the function can generate a larger range of values than a function whose minimum is flat. As was seen in the toy model, this creates a larger range of values which downstream layers would need to learn to deal with. Other noise-injection techniques flatten minima in a similar way.
       </p>
       <p>
         This hypothesis can also be used to elaborate on the explanation for how dropout <a href="https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf">(Srivastava et al. 2014)</a> works. The hypothesis presented by Srivastava et al. is that that dropout works in the following way:
@@ -190,7 +193,7 @@
         Standard backpropagation learning builds up brittle co-adaptations that work for the training data but do not generalize to unseen data. Random dropout breaks up these co-adaptations by making the presence of any particular hidden unit unreliable.
       </blockquote>
       <p>
-        However, the work presented in this post suggests that it might be better to interpret dropout as a technique which slightly corrupts the surface that each layer represents. Under this interpretation, the more intricate a surface is, the less likely its original form is to be accurately represented by a corruption. This makes it least challenging to learn simple functions, which are qualitatively more similar to the top-most layer in Figure 3 than the bottom-most layer.
+        However, the work presented in this post suggests that it might be better to interpret dropout as a technique which corrupts the surface that each layer represents, as was done in layer-wise re-training. Under this interpretation, the more intricate a surface is, the less likely its ideal form is to be accurately represented by a corruption. This makes it least challenging to learn simple functions, which are qualitatively more similar to the top-most layer in Figure 3 than the bottom-most layer.
       </p>
 
       <p>
@@ -199,9 +202,9 @@
       <p>
         This post also provides helps to explain a property of sparsity, in which, perhaps counter-intuitively, more sparsity does not necessarily imply better generalisation (<a href="http://jmlr.csail.mit.edu/proceedings/papers/v15/glorot11a/glorot11a.pdf">Glorot et al., 2011</a>; <a href="https://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf">Mass at al., 2013</a>). The hypothesis forwarded here suggests that sparsity is only helpful insofar as it reduces the image of each layer. Because the outputs of neurones are typically real-valued, they can represent similar inputs using multiple output values. This multiplicity of output values for the same kind of input is what harmed generalisation on the problem presented in this post.
       </p>
-      <h3>7. Further Questions</h3>
+      <h3>7. Open Questions</h3>
       <p>
-        As far as I know, there is no evidence on whether a neural network's high-dimensional hidden layers can help them to "untangle" the manifold so that function-wise (or layer-wise) re-training is unnecessary.
+        <a href="https://colah.github.io/posts/2014-03-NN-Manifolds-Topology/#links-and-homotopy">As Chris Olah explains</a>, it's possible that neural networks whose hidden layers are wide enough can "untangle" the manifold which the training data lie on. However, it's not clear whether this untangling happens only so far as to allow the model to fit the training set, or whether neural networks learn a function whose shape is more like what was achieved with the layer-wise re-training approach presented in Section 5.
       </p>
 
       <br/>
