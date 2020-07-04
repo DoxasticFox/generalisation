@@ -184,14 +184,17 @@
       </p>
 
       <p>
-        For example, training with large batches is known to harm generalisation by creating "sharp" minima. In the neighbourhood of the minimum, the function can generate a larger range of values than a function whose minimum is flat. As was seen in the toy model, this creates a larger range of values which downstream layers would need to learn to deal with. Other noise-injection techniques flatten minima in a similar way.
+        For example, training with large batches is thought to harm generalisation by creating "sharp" minima. The experiments described here suggest that sharpness of the training objective's minimum implies rapid variation in the learned function, and that the function represented by each layer will be rapidly-varying at the locations where the training data passed during training. This is because large batches cause SGD's training effect to be sharply focussed only at a few small regions of each layer. But smaller batches (or explicitly injecting noise) cause the training effect to become more diffuse so that each layer approximates the same output for each point in the neighbourhood of a given input. It is important for the layer to have the same output <u>in a particular neighbourhood</u> because the input which caused the output likely corresponds to the same classification class. (However, very different inputs may have very different outputs without harming generalisation, depending on the problem.) As a result of the minima being smooth, the downstream layers will have to learn to deal with a lesser range of values at testing time.
       </p>
+
       <p>
-        This hypothesis can also be used to elaborate on the explanation for how dropout <a href="https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf">(Srivastava et al. 2014)</a> works. The hypothesis presented by Srivastava et al. is that that dropout works in the following way:
+        The hypothesis in this post can also be used to elaborate on the explanation for how dropout <a href="https://www.cs.toronto.edu/~hinton/absps/JMLRdropout.pdf">(Srivastava et al. 2014)</a> works. The hypothesis presented by Srivastava et al. is that that dropout works in the following way:
       </p>
+
       <blockquote>
         Standard backpropagation learning builds up brittle co-adaptations that work for the training data but do not generalize to unseen data. Random dropout breaks up these co-adaptations by making the presence of any particular hidden unit unreliable.
       </blockquote>
+
       <p>
         However, the work presented in this post suggests that it might be better to interpret dropout as a technique which corrupts the surface that each layer represents, as was done in layer-wise re-training. Under this interpretation, the more intricate a surface is, the less likely its ideal form is to be accurately represented by a corruption. This makes it least challenging to learn simple functions, which are qualitatively more similar to the top-most layer in Figure 3 than the bottom-most layer.
       </p>
